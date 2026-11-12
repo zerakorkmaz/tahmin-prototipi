@@ -37,3 +37,10 @@
   vida, geçme, esnek bağlantı, kontrol; makine işlemleri saniye olarak ve operatöre bölünmez.
 - Ürün şablonları (washer tank, dış dikiz aynası) yalnızca bu sayıları doldurur.
 - Çıktılar: `data/genel_parametreler.xlsx`, `outputs/genel/`.
+
+## Genel sürüm rev2 (`src/genel_demo_rev2.py`)
+- Rev1'e ek olarak "zorluk eki": zor parça ve vida için engelli erişimli olanların sayısı
+  (alt sayı ≤ toplam). Vida eki +6 sn [DFA], zor parça eki +2,25 sn [genel DFA çerçevesi].
+- Rapor, eksiz ve ekli modeli ayrı test kümesinde karşılaştırır.
+- Çıktılar `_rev2` ekiyle: `data/genel_parametreler_rev2.xlsx`, `outputs/genel_rev2/`,
+  `outputs/aciklama_rev2.html`. Eski sürümlerin dosyaları silinmez, değiştirilmez.
