@@ -557,14 +557,16 @@ HTML_SABLON = r"""<!doctype html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Çevrim Süresi Tahmini</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Washer Tank Çevrim Tahmini</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
 :root{--iz:#e3e8ee;--vurgu-koyu:#1b3a5c;--bg:#f5f7fa;--kart:#fff;--yazi:#1d2733;--soluk:#5b6775;--vurgu:#2f5d8a;--cizgi:#d9e0e8;--uyari:#9a5b00;--uyari-bg:#fff4e0}
-@media (prefers-color-scheme:dark){:root{--iz:#26313c;--vurgu-koyu:#b9d6f2;--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--iz:#26313c;--vurgu-koyu:#b9d6f2;--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10;color-scheme:dark}}
+:root[data-theme="dark"]{--iz:#26313c;--vurgu-koyu:#b9d6f2;--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--yazi);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:640px;margin:0 auto;padding:16px}
+main{max-width:640px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 h1{font-size:1.25rem;margin:4px 0 2px}
 .demo{display:inline-block;font-size:.78rem;color:var(--uyari);background:var(--uyari-bg);border-radius:6px;padding:2px 8px;margin-bottom:12px}
 .kart{background:var(--kart);border:1px solid var(--cizgi);border-radius:12px;padding:16px;margin-bottom:14px}
@@ -579,7 +581,7 @@ input[type=number]{width:100%;padding:8px;font-size:1rem;border:1px solid var(--
 input.disarida{border-color:var(--uyari);outline:2px solid var(--uyari)}
 .op{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;grid-column:1/-1}
 .op button{padding:10px 0;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);cursor:pointer}
-.op button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:#fff}
+.op button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:var(--kart)}
 .uyari{display:none;color:var(--uyari);background:var(--uyari-bg);border-radius:8px;padding:10px;font-size:.9rem;margin-bottom:14px}
 details{font-size:.85rem;color:var(--soluk)}
 h2{font-size:1rem;margin:0 0 4px}
@@ -768,9 +770,15 @@ hesapla();
 """
 
 
-def html_yaz(model):
+def html_yaz(model, yayin_yolu=None):
     html = HTML_SABLON.replace("__MODEL_JSON__", json.dumps(model, ensure_ascii=False))
     (OUT / "index.html").write_text(html, encoding="utf-8")
+    if yayin_yolu:  # web linki için: <html>/<head>/<body> sarmalayıcıları olmadan aynı içerik
+        import re
+        govde = re.sub(r"<!doctype html>\s*<html[^>]*>\s*<head>\s*<meta charset=\"utf-8\">\s*<meta name=\"viewport\"[^>]*>\s*",
+                       "", html, flags=re.I)
+        govde = govde.replace("</head>\n<body>\n", "").replace("</body>\n</html>\n", "")
+        Path(yayin_yolu).write_text(govde, encoding="utf-8")
 
 
 # =====================================================================
@@ -871,7 +879,8 @@ def main():
     print(f"3) Model: seçilen = {secilen}")
     print(f"   R² = {final.rsquared:.4f}, düzeltilmiş R² = {final.rsquared_adj:.4f}")
 
-    html_yaz(model)
+    import sys
+    html_yaz(model, sys.argv[1] if len(sys.argv) > 1 else None)
     print("4) Arayüz: outputs/index.html")
     dogrula(model)
 
