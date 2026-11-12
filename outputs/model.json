@@ -1,0 +1,169 @@
+{
+  "aciklama": "Demo – sentetik veriyle eğitilmiş çevrim süresi modeli (sn). tahmin = sabit + Σ katsayı × terim",
+  "hedef": "cevrim_suresi_sn",
+  "sabit": 41.36714176194705,
+  "terimler": [
+    {
+      "ad": "1/operator",
+      "degisken": "operator",
+      "donusum": "ters",
+      "donusum_formul": "1/operator",
+      "katsayi": 16.215648912457922
+    },
+    {
+      "ad": "vida/operator",
+      "degisken": "vida",
+      "donusum": "bolu_n",
+      "donusum_formul": "vida/operator",
+      "katsayi": 9.487133125445798
+    },
+    {
+      "ad": "hortum/operator",
+      "degisken": "hortum",
+      "donusum": "bolu_n",
+      "donusum_formul": "hortum/operator",
+      "katsayi": 8.968089276653913
+    },
+    {
+      "ad": "klips/operator",
+      "degisken": "klips",
+      "donusum": "bolu_n",
+      "donusum_formul": "klips/operator",
+      "katsayi": 3.6293879526544353
+    },
+    {
+      "ad": "operator",
+      "degisken": "operator",
+      "donusum": "x",
+      "donusum_formul": "operator",
+      "katsayi": -7.834566323308112
+    },
+    {
+      "ad": "sensor/operator",
+      "degisken": "sensor",
+      "donusum": "bolu_n",
+      "donusum_formul": "sensor/operator",
+      "katsayi": 7.204109372316575
+    },
+    {
+      "ad": "pompa/operator",
+      "degisken": "pompa",
+      "donusum": "bolu_n",
+      "donusum_formul": "pompa/operator",
+      "katsayi": 9.619094270143135
+    },
+    {
+      "ad": "kaynak_m/operator",
+      "degisken": "kaynak_m",
+      "donusum": "bolu_n",
+      "donusum_formul": "kaynak_m/operator",
+      "katsayi": 12.271198403242426
+    },
+    {
+      "ad": "hacim_l/operator",
+      "degisken": "hacim_l",
+      "donusum": "bolu_n",
+      "donusum_formul": "hacim_l/operator",
+      "katsayi": 2.5657971012665843
+    },
+    {
+      "ad": "vida",
+      "degisken": "vida",
+      "donusum": "x",
+      "donusum_formul": "vida",
+      "katsayi": 0.7450435672465017
+    },
+    {
+      "ad": "hortum",
+      "degisken": "hortum",
+      "donusum": "x",
+      "donusum_formul": "hortum",
+      "katsayi": 1.0620977454225446
+    }
+  ],
+  "girdiler": [
+    {
+      "ad": "hacim_l",
+      "etiket": "Depo hacmi",
+      "birim": "L",
+      "min": 2.5,
+      "max": 6.5,
+      "varsayilan": 3.5,
+      "tamsayi": false,
+      "adim": 0.1
+    },
+    {
+      "ad": "kaynak_m",
+      "etiket": "Kaynak dikiş uzunluğu",
+      "birim": "m",
+      "min": 0.6,
+      "max": 1.6,
+      "varsayilan": 1.0,
+      "tamsayi": false,
+      "adim": 0.1
+    },
+    {
+      "ad": "vida",
+      "etiket": "Vida sayısı",
+      "birim": "adet",
+      "min": 0,
+      "max": 6,
+      "varsayilan": 2,
+      "tamsayi": true,
+      "adim": 1
+    },
+    {
+      "ad": "klips",
+      "etiket": "Klips sayısı",
+      "birim": "adet",
+      "min": 2,
+      "max": 8,
+      "varsayilan": 4,
+      "tamsayi": true,
+      "adim": 1
+    },
+    {
+      "ad": "hortum",
+      "etiket": "Hortum bağlantısı",
+      "birim": "adet",
+      "min": 1,
+      "max": 4,
+      "varsayilan": 2,
+      "tamsayi": true,
+      "adim": 1
+    },
+    {
+      "ad": "pompa",
+      "etiket": "Pompa sayısı",
+      "birim": "adet",
+      "min": 1,
+      "max": 2,
+      "varsayilan": 1,
+      "tamsayi": true,
+      "adim": 1
+    },
+    {
+      "ad": "sensor",
+      "etiket": "Seviye sensörü",
+      "birim": "adet",
+      "min": 0,
+      "max": 2,
+      "varsayilan": 1,
+      "tamsayi": true,
+      "adim": 1
+    },
+    {
+      "ad": "operator",
+      "etiket": "Operatör sayısı",
+      "birim": "kişi",
+      "min": 1,
+      "max": 4,
+      "varsayilan": 2,
+      "tamsayi": true,
+      "adim": 1
+    }
+  ],
+  "r2": 0.9946110360946351,
+  "duzeltilmis_r2": 0.9943510422220079,
+  "n_gozlem": 240
+}

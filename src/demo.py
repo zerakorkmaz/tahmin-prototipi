@@ -1,0 +1,653 @@
+"""
+Washer tank montaj hattı – çevrim süresi tahmin DEMOSU.
+
+Bu tek script baştan sona şunları yapar:
+  1. Parametre tablosunu yazar         -> data/parametreler.xlsx
+  2. Sentetik veri üretir              -> outputs/veri_seti.xlsx
+  3. İleri (forward stepwise) regresyon -> outputs/rapor.md, outputs/model.json
+  4. Arayüzü oluşturur                 -> outputs/index.html
+  5. Python ve HTML tahminlerini karşılaştırır (Playwright varsa)
+
+Çalıştırma (depo kök klasöründen):  python3 src/demo.py
+Parametreleri değiştirmek için aşağıdaki AYARLAR bölümünü düzenleyip
+script'i yeniden çalıştırmanız yeterli.
+
+NOT: Ölçülmüş veri yoktur. Tüm sayılar literatür ve VARSAYIM'lardan gelir.
+"""
+
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+KOK = Path(__file__).resolve().parent.parent
+DATA = KOK / "data"
+OUT = KOK / "outputs"
+
+# =====================================================================
+# AYARLAR
+# =====================================================================
+SEED = 42
+SATIR_PER_OPERATOR = 60          # 4 operatör seviyesi x 60 = 240 satır
+GIRIS_P_ESIGI = 0.05             # ileri seçimde değişken alma eşiği
+GURULTU_SD = 3.0                 # sn, normal gürültünün std. sapması (VARSAYIM)
+
+# Kaynak kısaltmaları (tam künye KAYNAKLAR sözlüğünde)
+# Her parametre: min, tipik, max, birim, kaynak/VARSAYIM açıklaması
+PARAMETRELER = [
+    # --- Literatürden okunan referans değerler (doğrudan modelde kullanılmayanlar dahil) ---
+    dict(parametre="Sıcak plaka kaynağı – toplam çevrim", min=10, tipik=None, max=60, birim="sn",
+         kaynak="[S1] 'cycle time ... ranges from 10 seconds to nearly a minute'; [S2] '10 seconds to minutes'"),
+    dict(parametre="Sıcak plaka kaynağı – ısıtma süresi", min=1.5, tipik=None, max=20, birim="sn",
+         kaynak="[S1] 'ranging from 1.5 seconds to 20 seconds'"),
+    dict(parametre="Titreşim kaynağı – kaynak süresi (büyük birleşim)", min=5, tipik=None, max=15, birim="sn",
+         kaynak="[S3] 'around 5-15 seconds'; [S4] ortalama 10–15 sn kaynak + ~15 sn bekleme"),
+    dict(parametre="Ultrasonik kaynak – kaynak süresi", min=0.2, tipik=None, max=2, birim="sn",
+         kaynak="[S5] '0.2 to 2 seconds (maximum of 3 seconds)'"),
+    dict(parametre="Sızdırmazlık testi – benzer parçalar (radyatör, yağ soğutucu vb.)", min=20, tipik=None, max=30, birim="sn",
+         kaynak="[S6] 'less than 20 to 30 seconds per part'; yakıt tankı için 45–65 sn"),
+    dict(parametre="DFA ideal montaj süresi (parça başı)", min=None, tipik=3, max=None, birim="sn",
+         kaynak="[S9] Boothroyd-Dewhurst: 1 sn tutma + 1 sn yerleştirme + 1 sn sabitleme"),
+    dict(parametre="Vida – elle tutma süresi (kod 11)", min=None, tipik=1.8, max=None, birim="sn",
+         kaynak="[S7], [S8] DFA çalışma tablosu"),
+    dict(parametre="Vida – yerleştirme+sıkma (kod 38 / 39 / 59)", min=6.0, tipik=8.0, max=12.0, birim="sn",
+         kaynak="[S7] kod 38=6 sn, kod 59 (engelli erişim)=12 sn; [S8] kod 39=8 sn"),
+    dict(parametre="Denge kaybı değerlendirme bandı", min=10, tipik=None, max=20, birim="%",
+         kaynak="[S11] Bd≤%10 mükemmel, %10–20 iyi, ≥%20 kötü; örnek hat %41,1 → %15"),
+    dict(parametre="Denge kaybı – otomotiv yan sanayi örneği", min=25, tipik=None, max=58, birim="%",
+         kaynak="[S12] dikiş hattı: %58 → yeniden dengeleme sonrası %25"),
+    dict(parametre="Hat verimi hedefi (elle montaj)", min=85, tipik=None, max=90, birim="%",
+         kaynak="[S13] '85–90%: standart hedef' (uygulayıcı makalesi, hakemsiz)"),
+    dict(parametre="1 TMU", min=None, tipik=0.036, max=None, birim="sn",
+         kaynak="[S14] 1 TMU = 0,036 sn (MTM tablo değerlerine erişilemedi, bkz. not)"),
+    dict(parametre="Cam suyu deposu hacmi (binek araç)", min=2.8, tipik=None, max=6.2, birim="L",
+         kaynak="[S16] 2,8 L; far yıkamalı 6,2 L. [S15] 3,2 L"),
+]
+
+# --- Modelde kullanılan element süreleri (sentetik veriyi üreten 'gerçek' değerler) ---
+ELEMENTLER = {
+    # anahtar: (min, tipik, max, birim, kaynak/VARSAYIM)
+    "sabit_is":       (10, 15, 20, "sn/ürün",
+                       "VARSAYIM: etiketleme, görsel kontrol, kutulama gibi üründen bağımsız işler."),
+    "tasima_per_l":   (1.0, 2.0, 3.0, "sn/L",
+                       "VARSAYIM: depo ~4 kez alınıp konur (kaynak, montaj, test, kutu). [S10] büyük/ağır parça "
+                       "tutma 3,5–5 sn diyor; hacimle orantılı artış varsayıldı."),
+    "kaynak_sabit":   (10, 20, 30, "sn/ürün",
+                       "VARSAYIM: sıcak plaka çevriminin uzunluktan bağımsız kısmı (ısıtma+geçiş+tutma). "
+                       "Toplam [S1],[S2]'deki 10–60 sn aralığında kalacak şekilde seçildi."),
+    "kaynak_per_m":   (5, 10, 20, "sn/m",
+                       "VARSAYIM: uzun kaynak hattı = büyük plaka, daha uzun ısıtma/soğuma. "
+                       "Sıcak plakada tüm birleşim aynı anda kaynar; uzunluk etkisi zayıf tutuldu."),
+    "pompa":          (6.0, 8.5, 12.0, "sn/adet",
+                       "VARSAYIM ([S8]'den türetildi): tutma 1,95 sn + bastırarak yerleştirme 6,5 sn (kod 08)."),
+    "sensor":         (4.0, 6.0, 9.0, "sn/adet",
+                       "VARSAYIM: seviye sensörü contaya geçirilir + soket; pompadan biraz kısa kabul edildi."),
+    "vida":           (7.8, 9.8, 13.8, "sn/adet",
+                       "[S7],[S8]: tutma 1,8 sn + yerleştirme/sıkma 6 / 8 / 12 sn (kod 38 / 39 / 59)."),
+    "klips":          (3.0, 3.5, 4.5, "sn/adet",
+                       "[S10] tutma 1,5–2,0 + geçmeli (snap-fit) yerleştirme 1,5–2,5 sn. "
+                       "Not: kaynak bunu 'genel çerçeve, doğrulanmış tablo değil' diye belirtiyor."),
+    "hortum":         (6.0, 10.0, 15.0, "sn/adet",
+                       "VARSAYIM: esnek parça tutma ([S10] 3–5 sn) + rakora geçirme + kelepçe. "
+                       "Hortum için sayısal kaynak bulunamadı."),
+    "sizdirmazlik":   (20, 25, 30, "sn/ürün",
+                       "[S6] benzer otomotiv parçaları 20–30 sn; tipik değer orta nokta (VARSAYIM)."),
+    "denge_kaybi":    (0.10, 0.15, 0.20, "oran",
+                       "[S11] %10–20 'iyi' bandı. n=1 iken denge kaybı 0 (VARSAYIM: tek istasyonda boşta "
+                       "bekleme yok); n≥2 için satır başına bu aralıktan düzgün dağılımla çekildi."),
+    "gurultu_sd":     (None, GURULTU_SD, None, "sn",
+                       "VARSAYIM: operatör performans farkı, küçük duruşlar vb. için normal gürültü."),
+}
+
+# --- Ürün girdileri: veri üretim aralıkları ve arayüz varsayılanı (tipik washer tank) ---
+GIRDILER = {
+    # ad: (etiket, birim, min, max, varsayılan, tamsayı mı, kaynak/VARSAYIM)
+    "hacim_l":   ("Depo hacmi", "L", 2.5, 6.5, 3.5, False,
+                  "[S15],[S16] 2,8–6,2 L; aralık biraz genişletildi (VARSAYIM)."),
+    "kaynak_m":  ("Kaynak dikiş uzunluğu", "m", 0.6, 1.6, 1.0, False,
+                  "VARSAYIM: 3–6 L'lik depoların birleşim çevresi tahmini."),
+    "vida":      ("Vida sayısı", "adet", 0, 6, 2, True, "VARSAYIM"),
+    "klips":     ("Klips sayısı", "adet", 2, 8, 4, True, "VARSAYIM"),
+    "hortum":    ("Hortum bağlantısı", "adet", 1, 4, 2, True, "VARSAYIM"),
+    "pompa":     ("Pompa sayısı", "adet", 1, 2, 1, True, "VARSAYIM (ön/arka cam için 2 pompa olabilir)"),
+    "sensor":    ("Seviye sensörü", "adet", 0, 2, 1, True, "VARSAYIM"),
+    "operator":  ("Operatör sayısı", "kişi", 1, 4, 2, True, "Kullanıcı isteği: 1–4"),
+}
+URUN_DEGISKENLERI = [k for k in GIRDILER if k != "operator"]
+
+KAYNAKLAR = {
+    "S1": "Sprovieri, J. (2022). What's New With Hot-Plate Welding. ASSEMBLY Magazine, 13.09.2022. "
+          "https://www.assemblymag.com/articles/97311-whats-new-with-hot-plate-welding",
+    "S2": "Wikipedia katkıcıları. Hot plate welding (9 Eylül 2025 sürümü). https://en.wikipedia.org/wiki/Hot_plate_welding",
+    "S3": "TWI Ltd. (t.y.). What is vibration welding of thermoplastics? "
+          "https://www.twi-global.com/technical-knowledge/faqs/faq-what-is-vibration-welding-of-thermoplastics",
+    "S4": "Weber, A. (2021). Vibration Welding Adapts to Shifting Demands. ASSEMBLY Magazine, 08.02.2021. "
+          "https://www.assemblymag.com/articles/96123-vibration-welding-adapts-to-shifting-demands",
+    "S5": "Telsonic AG (t.y.). Ultrasonic joining technology systems. "
+          "https://www.telsonic.com/en/ultrasound-technology/ultrasonic-joining-technology-systems",
+    "S6": "Sprovieri, J. (2009). Leak Testing Auto Parts. ASSEMBLY Magazine, 27.03.2009. "
+          "https://www.assemblymag.com/articles/86667-leak-testing-auto-parts",
+    "S7": "Chang, G., Peterson, W. (2010). Design for Assembly in Manufacturing Engineering Technology Program: "
+          "Experience and Success. ASEE Annual Conference, AC 2010-2309 (tablolar: BDI Product Design for "
+          "Assembly Handbook, 1989). https://peer.asee.org/design-for-assembly-in-manufacturing-engineering-"
+          "technology-program-experience-and-success.pdf",
+    "S8": "HKUST IELM 317 ders notu (t.y.). Design For Manufacturing/Assembly (DFM, DFA, DFMA); "
+          "Boothroyd & Dewhurst (1991)'e atıfla. https://ieda.ust.hk/dfaculty/ajay/courses/ielm317/lecs/dfm/dfm.pdf",
+    "S9": "Teni, M.H.M., Naroh, A., Maliki, K.A.A., Tukiran, A. (2019). Design Development of a Coffee Maker "
+          "using Design for Assembly Method. IJEAT 9(2). DOI: 10.35940/ijeat.B4942.129219",
+    "S10": "Guns, B. (t.y.). Design for Manufacturing (DFM). Engineering LibreTexts, Northeast Wisconsin "
+           "Technical College. https://eng.libretexts.org/Courses/Northeast_Wisconsin_Technical_College/"
+           "Design_for_Various_Manufacturing_Methods/01:_Design_for_Manufacturing_(DFM)",
+    "S11": "Yin, M., Jiang, W. (2016). The Theory of IE Assembly Line Balance and Optimization. "
+           "MMEBC 2016, Atlantis Press. https://www.atlantis-press.com/article/25858924.pdf",
+    "S12": "Govender, P., Dewa, M. (2022). Use of Kaizen Principle and Line Balancing Technique for Process "
+           "Improvement in the Assembly of Automotive Components. South African Journal of Industrial "
+           "Engineering 33(3), 69–82. DOI: 10.7166/33-3-2790",
+    "S13": "Rajadurai, R. (2026). Line Balancing Calculation: Formula & Worked Example. MetricMech. "
+           "https://metricmech.com/articles/line-balancing-calculation",
+    "S14": "King Saud Univ. ders notu (t.y.). Predetermined Motion Time Systems – part 2 (MTM). "
+           "https://faculty.ksu.edu.sa/sites/default/files/7_pmts_ams_may01_17_-_p2.pdf",
+    "S15": "Tesla (t.y.). Model 3 – Topping Up Windshield Washer Fluid. https://service.tesla.com/docs/Public/"
+           "diy/model3/en_us/GUID-3A80A08E-9DCB-45A4-9796-BCD9153A4A00.html",
+    "S16": "VWmanual.ru (t.y.). Windscreen washer fluid level (Passat B5, bağımsız el kitabı sitesi). "
+           "https://vwmanual.ru/en/passat/b5/main/checks/uroven-zhidkosti-stekloomyvatelya",
+}
+
+
+def t(anahtar):
+    """Elementin tipik süresi."""
+    return ELEMENTLER[anahtar][1]
+
+
+# =====================================================================
+# 1) PARAMETRE TABLOSU
+# =====================================================================
+def excel_bicimle(ws, genislikler=None):
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="2F5D8A")
+        c.alignment = Alignment(vertical="center", wrap_text=True)
+    for i, col in enumerate(ws.columns, start=1):
+        w = (genislikler or {}).get(i)
+        if w is None:
+            w = min(60, max(10, max(len(str(c.value or "")) for c in col) + 2))
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+
+
+def parametre_tablosu_yaz():
+    satirlar = []
+    for p in PARAMETRELER:
+        satirlar.append(dict(grup="Literatür referansı", **p))
+    for k, (mn, tp, mx, birim, kay) in ELEMENTLER.items():
+        satirlar.append(dict(grup="Modelde kullanılan element", parametre=k, min=mn, tipik=tp, max=mx,
+                             birim=birim, kaynak=kay))
+    for k, (et, birim, mn, mx, vs, _, kay) in GIRDILER.items():
+        satirlar.append(dict(grup="Ürün girdisi (veri aralığı)", parametre=f"{k} ({et})", min=mn, tipik=vs,
+                             max=mx, birim=birim, kaynak=kay))
+    df = pd.DataFrame(satirlar).rename(columns={"kaynak": "kaynak/VARSAYIM"})
+    kay = pd.DataFrame([dict(kod=k, kunye=v) for k, v in KAYNAKLAR.items()])
+    notlar = pd.DataFrame({"not": [
+        "Tüm kaynaklar bu çalışmada açılıp okunmuştur; tırnak içindeki ifadeler kaynaktan aynen alınmıştır.",
+        "MTM-1 / MTM-UAS tablo değerleri: açık erişimli kaynaklarda tablolar resim olarak ya da telif "
+        "kısıtlı olduğu için okunamadı. Bu yüzden element süreleri Boothroyd-Dewhurst DFA tablolarından alındı.",
+        "Pompa, sensör ve hortum için doğrudan sayısal kaynak bulunamadı → VARSAYIM.",
+        "Washer tank için doğrudan sızdırmazlık testi süresi bulunamadı; benzer otomotiv parçaları kullanıldı.",
+    ]})
+    DATA.mkdir(exist_ok=True)
+    yol = DATA / "parametreler.xlsx"
+    with pd.ExcelWriter(yol, engine="openpyxl") as xw:
+        df.to_excel(xw, sheet_name="parametreler", index=False)
+        kay.to_excel(xw, sheet_name="kaynaklar", index=False)
+        notlar.to_excel(xw, sheet_name="notlar", index=False)
+        excel_bicimle(xw.sheets["parametreler"], {1: 26, 2: 46, 7: 90})
+        excel_bicimle(xw.sheets["kaynaklar"], {2: 140})
+        excel_bicimle(xw.sheets["notlar"], {1: 140})
+        for ws in (xw.sheets["parametreler"],):
+            for row in ws.iter_rows(min_row=2):
+                for c in row:
+                    c.alignment = Alignment(wrap_text=True, vertical="top")
+    return yol
+
+
+# =====================================================================
+# 2) SENTETİK VERİ
+# =====================================================================
+def is_icerigi(d):
+    """Toplam iş içeriği (sn) = Σ (element sayısı × element süresi)."""
+    return (t("sabit_is")
+            + t("tasima_per_l") * d["hacim_l"]
+            + t("kaynak_sabit") + t("kaynak_per_m") * d["kaynak_m"]
+            + t("pompa") * d["pompa"]
+            + t("sensor") * d["sensor"]
+            + t("vida") * d["vida"]
+            + t("klips") * d["klips"]
+            + t("hortum") * d["hortum"]
+            + t("sizdirmazlik"))
+
+
+def veri_uret():
+    rng = np.random.default_rng(SEED)
+    satirlar = []
+    for n in range(1, 5):
+        for _ in range(SATIR_PER_OPERATOR):
+            d = {}
+            for k in URUN_DEGISKENLERI:
+                _, _, mn, mx, _, tam, _ = GIRDILER[k]
+                d[k] = int(rng.integers(mn, mx + 1)) if tam else round(float(rng.uniform(mn, mx)), 2)
+            d["operator"] = n
+            mn_b, _, mx_b, _, _ = ELEMENTLER["denge_kaybi"]
+            d["denge_kaybi"] = 0.0 if n == 1 else round(float(rng.uniform(mn_b, mx_b)), 3)
+            d["is_icerigi_sn"] = round(is_icerigi(d), 2)
+            d["cevrim_suresi_sn"] = round(d["is_icerigi_sn"] / n * (1 + d["denge_kaybi"])
+                                          + float(rng.normal(0, GURULTU_SD)), 2)
+            d["kaynak"] = "sentetik"
+            satirlar.append(d)
+    df = pd.DataFrame(satirlar)
+    df.insert(0, "urun_id", [f"V{i:03d}" for i in range(1, len(df) + 1)])
+    return df
+
+
+# =====================================================================
+# 3) İLERİ (FORWARD STEPWISE) REGRESYON
+# =====================================================================
+def aday_terimler():
+    """Aday terimler: ürün değişkenleri, n, 1/n ve (değişken / n) etkileşimleri."""
+    adaylar = {}
+    for k in URUN_DEGISKENLERI:
+        adaylar[k] = dict(tur="x", degisken=k)
+    adaylar["operator"] = dict(tur="x", degisken="operator")
+    adaylar["1/operator"] = dict(tur="ters", degisken="operator")
+    for k in URUN_DEGISKENLERI:
+        adaylar[f"{k}/operator"] = dict(tur="bolu_n", degisken=k)
+    return adaylar
+
+
+def terim_hesapla(tanim, girdi):
+    """Tek bir terimin değeri. girdi: dict ya da DataFrame."""
+    n = girdi["operator"]
+    if tanim["tur"] == "x":
+        return girdi[tanim["degisken"]]
+    if tanim["tur"] == "ters":
+        return 1.0 / n
+    if tanim["tur"] == "bolu_n":
+        return girdi[tanim["degisken"]] / n
+    raise ValueError(tanim)
+
+
+def ileri_secim(df, y_adi="cevrim_suresi_sn"):
+    adaylar = aday_terimler()
+    X_tum = pd.DataFrame({ad: terim_hesapla(tn, df) for ad, tn in adaylar.items()})
+    y = df[y_adi]
+    secilen, adimlar = [], []
+    onceki_adj = -np.inf
+    while True:
+        en_iyi = None
+        for ad in X_tum.columns:
+            if ad in secilen:
+                continue
+            m = sm.OLS(y, sm.add_constant(X_tum[secilen + [ad]])).fit()
+            p = m.pvalues[ad]
+            if en_iyi is None or p < en_iyi[1]:
+                en_iyi = (ad, p, m)
+        if en_iyi is None:
+            break
+        ad, p, m = en_iyi
+        if p >= GIRIS_P_ESIGI or m.rsquared_adj <= onceki_adj:
+            adimlar.append(dict(adim=len(adimlar) + 1, eklenen=f"(durdu: en iyi aday {ad}, p={p:.3g})",
+                                p=p, r2=None, adj_r2=None))
+            break
+        secilen.append(ad)
+        onceki_adj = m.rsquared_adj
+        adimlar.append(dict(adim=len(adimlar) + 1, eklenen=ad, p=p, r2=m.rsquared, adj_r2=m.rsquared_adj))
+    final = sm.OLS(y, sm.add_constant(X_tum[secilen])).fit()
+    return final, secilen, adaylar, adimlar
+
+
+def model_json_olustur(final, secilen, adaylar):
+    kullanilan = []
+    for ad in secilen:
+        v = adaylar[ad]["degisken"]
+        if v not in kullanilan:
+            kullanilan.append(v)
+    if "operator" not in kullanilan:   # arayüzde operatör her zaman seçilebilsin
+        kullanilan.append("operator")
+    girdiler = []
+    for k in GIRDILER:
+        if k not in kullanilan:
+            continue
+        et, birim, mn, mx, vs, tam, _ = GIRDILER[k]
+        girdiler.append(dict(ad=k, etiket=et, birim=birim, min=mn, max=mx, varsayilan=vs, tamsayi=tam,
+                             adim=1 if tam else 0.1))
+    donusum_aciklama = {"x": "x", "ters": "1/operator", "bolu_n": "x/operator"}
+    return dict(
+        aciklama="Demo – sentetik veriyle eğitilmiş çevrim süresi modeli (sn). "
+                 "tahmin = sabit + Σ katsayı × terim",
+        hedef="cevrim_suresi_sn",
+        sabit=float(final.params["const"]),
+        terimler=[dict(ad=ad, degisken=adaylar[ad]["degisken"], donusum=adaylar[ad]["tur"],
+                       donusum_formul=donusum_aciklama[adaylar[ad]["tur"]].replace("x", adaylar[ad]["degisken"])
+                       if adaylar[ad]["tur"] != "ters" else "1/operator",
+                       katsayi=float(final.params[ad])) for ad in secilen],
+        girdiler=girdiler,
+        r2=float(final.rsquared), duzeltilmis_r2=float(final.rsquared_adj), n_gozlem=int(final.nobs),
+    )
+
+
+def python_tahmin(model, girdi):
+    y = model["sabit"]
+    for tm in model["terimler"]:
+        y += tm["katsayi"] * terim_hesapla(dict(tur=tm["donusum"], degisken=tm["degisken"]), girdi)
+    return y
+
+
+# =====================================================================
+# RAPOR
+# =====================================================================
+def rapor_yaz(df, final, secilen, adimlar, model, aday_sayisi):
+    s = []
+    s.append("> **Bu sonuçlar sentetik veriye dayanan bir demodur.** Ölçülmüş veri kullanılmamıştır; "
+             "element süreleri literatürden ve VARSAYIM'lardan alınmıştır (bkz. `data/parametreler.xlsx`).\n")
+    s.append("# Çevrim Süresi Tahmin Modeli – Demo Raporu\n")
+    s.append("## Veri\n")
+    s.append(f"- {len(df)} satır sentetik ürün varyantı (her operatör sayısı 1–4 için {SATIR_PER_OPERATOR} satır), "
+             f"random seed = {SEED}.")
+    s.append(f"- Satır sayısı gerekçesi: {aday_sayisi} aday terim var. Yaygın kural olan 'aday değişken başına "
+             f"en az 10–15 gözlem' ile 160–240 satır gerekir; üst sınır seçildi ve operatör seviyeleri dengeli tutuldu.")
+    s.append("- Üretim formülü: `çevrim = iş_içeriği / n × (1 + denge_kaybı) + N(0, "
+             f"{GURULTU_SD}²)`; n=1 iken denge kaybı 0, n≥2 iken %10–20.\n")
+    s.append("## Aday değişkenler\n")
+    s.append("Ürün değişkenleri (hacim, kaynak uzunluğu, vida, klips, hortum, pompa, sensör), operatör için "
+             "**n** ve **1/n**, ayrıca her ürün değişkeninin **n'e bölünmüş** hali (çünkü üretim formülünde iş "
+             "içeriği operatör sayısına bölünüyor).\n")
+    s.append("## İleri seçim adımları\n")
+    s.append(f"Her adımda p-değeri en küçük aday eklenir; p < {GIRIS_P_ESIGI} ve düzeltilmiş R² artmıyorsa durulur.\n")
+    s.append("| Adım | Eklenen terim | p | R² | Düz. R² |")
+    s.append("|---|---|---|---|---|")
+    for a in adimlar:
+        r2 = "–" if a["r2"] is None else f"{a['r2']:.4f}"
+        ar2 = "–" if a["adj_r2"] is None else f"{a['adj_r2']:.4f}"
+        s.append(f"| {a['adim']} | {a['eklenen']} | {a['p']:.2e} | {r2} | {ar2} |")
+    s.append("\n## Son model\n")
+    s.append(f"- R² = **{final.rsquared:.4f}**, düzeltilmiş R² = **{final.rsquared_adj:.4f}**, "
+             f"artık std. sapma = {np.sqrt(final.scale):.2f} sn\n")
+    s.append("| Terim | Katsayı | Std. hata | p |")
+    s.append("|---|---|---|---|")
+    for ad in ["const"] + secilen:
+        s.append(f"| {'sabit' if ad == 'const' else ad} | {final.params[ad]:.3f} | {final.bse[ad]:.3f} | "
+                 f"{final.pvalues[ad]:.2e} |")
+    terimler = " ".join(f"{'+' if tm['katsayi'] >= 0 else '−'} {abs(tm['katsayi']):.2f}·{tm['ad']}"
+                        for tm in model["terimler"])
+    s.append(f"\n**Denklem:** `çevrim_sn = {model['sabit']:.2f} {terimler}`\n")
+    s.append("## Kısa yorum\n")
+    s.append("- Operatör etkisi n ile değil **1/n** ile (ve ürün değişkenleri / n ile) yakalanıyor: bu, süreyi "
+             "operatör sayısına bölen üretim formülüyle uyumlu.")
+    # beklenen katsayı karşılaştırması
+    ort_carp = df.loc[df.operator >= 2, "denge_kaybi"].mean() + 1
+    karsi = {"vida": "vida", "klips": "klips", "hortum": "hortum", "pompa": "pompa", "sensor": "sensor",
+             "hacim_l": "tasima_per_l", "kaynak_m": "kaynak_per_m"}
+    satir = []
+    for tm in model["terimler"]:
+        if tm["donusum"] == "bolu_n" and tm["degisken"] in karsi:
+            satir.append(f"{tm['degisken']}: {tm['katsayi']:.2f} (formülde {t(karsi[tm['degisken']])} × "
+                         f"~{ort_carp:.2f} ≈ {t(karsi[tm['degisken']]) * ort_carp:.2f})")
+    if satir:
+        s.append("- '/operator' katsayıları ≈ element süresi × (1 + ortalama denge kaybı) olmalı: "
+                 + "; ".join(satir) + ". n=1 satırlarında denge kaybı 0 olduğu için katsayılar bu değerin "
+                 "biraz altında kalabilir.")
+    s.append("- Doğrusal `operator` ya da bölünmemiş ürün terimleri seçildiyse, bunlar denge kaybının n=1'de 0, "
+             "n≥2'de ~%15 olmasından doğan doğrusal olmayan farkı düzeltir; tek başına fiziksel anlamları yoktur.")
+    s.append("- Sentetik veri, modelin bulması gereken formülden üretildiği için yüksek R² beklenen bir sonuçtur; "
+             "gerçek ölçümlerle R² daha düşük çıkacaktır.")
+    s.append("- Sınırlama: kaynak ve sızdırmazlık testi gerçekte makine süresidir ve operatör sayısıyla kısalmaz; "
+             "demoda istenen formül gereği tüm iş içeriği n'e bölünmüştür.\n")
+    s.append("## Dosyalar\n")
+    s.append("- `outputs/veri_seti.xlsx` – sentetik veri\n- `outputs/model.json` – katsayılar, dönüşümler, girdi "
+             "aralıkları\n- `outputs/index.html` – çevrimdışı tahmin arayüzü\n- `src/demo.py` – hepsini yeniden üretir\n")
+    s.append("## Kaynakça\n")
+    for k, v in KAYNAKLAR.items():
+        s.append(f"- [{k}] {v}")
+    (OUT / "rapor.md").write_text("\n".join(s) + "\n", encoding="utf-8")
+
+
+# =====================================================================
+# 4) HTML ARAYÜZ
+# =====================================================================
+HTML_SABLON = r"""<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Çevrim Süresi Tahmini</title>
+<style>
+:root{--bg:#f5f7fa;--kart:#fff;--yazi:#1d2733;--soluk:#5b6775;--vurgu:#2f5d8a;--cizgi:#d9e0e8;--uyari:#9a5b00;--uyari-bg:#fff4e0}
+@media (prefers-color-scheme:dark){:root{--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--yazi);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.25rem;margin:4px 0 2px}
+.demo{display:inline-block;font-size:.78rem;color:var(--uyari);background:var(--uyari-bg);border-radius:6px;padding:2px 8px;margin-bottom:12px}
+.kart{background:var(--kart);border:1px solid var(--cizgi);border-radius:12px;padding:16px;margin-bottom:14px}
+.sonuc{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:center}
+.sonuc .deger{font-size:2rem;font-weight:700;color:var(--vurgu);font-variant-numeric:tabular-nums}
+.sonuc .etiket{font-size:.85rem;color:var(--soluk)}
+.alan{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cizgi)}
+.alan:last-child{border-bottom:0}
+.alan label{font-size:.95rem}
+.alan small{color:var(--soluk)}
+input[type=number]{width:100%;padding:8px;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);text-align:right}
+input.disarida{border-color:var(--uyari);outline:2px solid var(--uyari)}
+.op{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;grid-column:1/-1}
+.op button{padding:10px 0;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);cursor:pointer}
+.op button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:#fff}
+.uyari{display:none;color:var(--uyari);background:var(--uyari-bg);border-radius:8px;padding:10px;font-size:.9rem;margin-bottom:14px}
+details{font-size:.85rem;color:var(--soluk)}
+code{font-size:.8rem;word-break:break-word}
+</style>
+</head>
+<body>
+<main>
+<h1>Washer tank montajı – çevrim süresi tahmini</h1>
+<div class="demo">Demo – sentetik veriyle eğitilmiştir</div>
+
+<div class="kart sonuc" aria-live="polite">
+  <div><div class="deger" id="sure">–</div><div class="etiket">Tahmini çevrim süresi (sn)</div></div>
+  <div><div class="deger" id="adet">–</div><div class="etiket">Saatlik üretim (adet)</div></div>
+</div>
+<div class="uyari" id="uyari"></div>
+
+<div class="kart" id="girdiler"></div>
+
+<details class="kart">
+  <summary>Model denklemi</summary>
+  <p><code id="denklem"></code></p>
+  <p id="bilgi"></p>
+</details>
+</main>
+<script>
+const MODEL = __MODEL_JSON__;
+
+function terim(t, v) {
+  const n = v.operator;
+  if (t.donusum === "x") return v[t.degisken];
+  if (t.donusum === "ters") return 1 / n;
+  if (t.donusum === "bolu_n") return v[t.degisken] / n;
+  throw new Error(t.donusum);
+}
+function tahmin(v) {
+  let y = MODEL.sabit;
+  for (const t of MODEL.terimler) y += t.katsayi * terim(t, v);
+  return y;
+}
+window.tahmin = tahmin;
+
+const kutu = document.getElementById("girdiler");
+const deger = {};
+for (const g of MODEL.girdiler) {
+  deger[g.ad] = g.varsayilan;
+  const d = document.createElement("div");
+  d.className = "alan";
+  if (g.ad === "operator") {
+    d.innerHTML = `<label>${g.etiket} <small>(${g.min}–${g.max})</small></label><div></div>`;
+    const op = document.createElement("div");
+    op.className = "op";
+    for (let i = g.min; i <= g.max; i++) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = i; b.dataset.n = i;
+      b.setAttribute("aria-pressed", i === g.varsayilan);
+      b.onclick = () => {
+        deger.operator = i;
+        op.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+        hesapla();
+      };
+      op.appendChild(b);
+    }
+    d.appendChild(op);
+  } else {
+    d.innerHTML = `<label for="in_${g.ad}">${g.etiket} <small>(${g.birim}, ${g.min}–${g.max})</small></label>
+      <input type="number" id="in_${g.ad}" inputmode="decimal" step="${g.adim}" value="${g.varsayilan}">`;
+    d.querySelector("input").addEventListener("input", e => {
+      deger[g.ad] = e.target.value === "" ? NaN : Number(e.target.value);
+      hesapla();
+    });
+  }
+  kutu.appendChild(d);
+}
+
+function hesapla() {
+  const disarida = [];
+  for (const g of MODEL.girdiler) {
+    const v = deger[g.ad];
+    const kotu = !Number.isFinite(v) || v < g.min || v > g.max;
+    const inp = document.getElementById("in_" + g.ad);
+    if (inp) inp.classList.toggle("disarida", kotu);
+    if (kotu) disarida.push(`${g.etiket} (${g.min}–${g.max} ${g.birim})`);
+  }
+  const u = document.getElementById("uyari");
+  u.style.display = disarida.length ? "block" : "none";
+  u.textContent = disarida.length ? "Uyarı: model bu aralıkta eğitilmedi → " + disarida.join(", ") : "";
+  const tumSayi = MODEL.girdiler.every(g => Number.isFinite(deger[g.ad]));
+  const s = tumSayi ? tahmin(deger) : NaN;
+  const sEl = document.getElementById("sure"), aEl = document.getElementById("adet");
+  sEl.dataset.ham = s;
+  sEl.textContent = Number.isFinite(s) ? s.toFixed(1) : "–";
+  aEl.textContent = Number.isFinite(s) && s > 0 ? (3600 / s).toFixed(1) : "–";
+}
+
+document.getElementById("denklem").textContent = "çevrim_sn = " + MODEL.sabit.toFixed(3) + " " +
+  MODEL.terimler.map(t => (t.katsayi >= 0 ? "+ " : "− ") + Math.abs(t.katsayi).toFixed(3) + "·" + t.ad).join(" ");
+document.getElementById("bilgi").textContent =
+  `R² = ${MODEL.r2.toFixed(4)}, düzeltilmiş R² = ${MODEL.duzeltilmis_r2.toFixed(4)}, ${MODEL.n_gozlem} sentetik gözlem.`;
+hesapla();
+</script>
+</body>
+</html>
+"""
+
+
+def html_yaz(model):
+    html = HTML_SABLON.replace("__MODEL_JSON__", json.dumps(model, ensure_ascii=False))
+    (OUT / "index.html").write_text(html, encoding="utf-8")
+
+
+# =====================================================================
+# 5) PYTHON ↔ HTML DOĞRULAMA
+# =====================================================================
+DOGRULAMA_JS = r"""
+const { chromium } = require('playwright');
+const [,, htmlYolu, ornekYolu] = process.argv;
+const ornekler = JSON.parse(require('fs').readFileSync(ornekYolu, 'utf8'));
+(async () => {
+  const b = await chromium.launch();
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await p.goto('file://' + htmlYolu);
+  const sonuc = [];
+  for (const o of ornekler) {
+    // girişleri arayüz üzerinden doldur (gerçek kullanım gibi)
+    for (const [k, v] of Object.entries(o)) {
+      if (k === 'operator') await p.click(`.op button[data-n="${v}"]`);
+      else await p.fill(`#in_${k}`, String(v));
+    }
+    const ham = await p.$eval('#sure', e => Number(e.dataset.ham));
+    const fn = await p.evaluate(v => window.tahmin(v), o);
+    sonuc.push({ arayuz: ham, fonksiyon: fn });
+  }
+  const tasma = await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  console.log(JSON.stringify({ sonuc, tasma }));
+  await b.close();
+})();
+"""
+
+
+def dogrula(model):
+    ad = [g["ad"] for g in model["girdiler"]]
+    rng = np.random.default_rng(SEED + 1)
+    ornekler = [{g["ad"]: g["varsayilan"] for g in model["girdiler"]}]
+    for n in range(1, 5):
+        o = {}
+        for g in model["girdiler"]:
+            if g["ad"] == "operator":
+                o[g["ad"]] = n
+            elif g["tamsayi"]:
+                o[g["ad"]] = int(rng.integers(g["min"], g["max"] + 1))
+            else:
+                o[g["ad"]] = round(float(rng.uniform(g["min"], g["max"])), 2)
+        ornekler.append(o)
+    py = [python_tahmin(model, o) for o in ornekler]
+    print("\n5) Python ↔ HTML karşılaştırması")
+    if shutil.which("node") is None:
+        print("   node bulunamadı; HTML doğrulaması atlandı.")
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        js, oy = Path(tmp) / "dogrula.js", Path(tmp) / "ornek.json"
+        js.write_text(DOGRULAMA_JS)
+        oy.write_text(json.dumps(ornekler))
+        r = subprocess.run(["node", str(js), str(OUT / "index.html"), str(oy)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print("   Playwright çalıştırılamadı; HTML doğrulaması atlandı.\n  ", r.stderr.strip()[:300])
+        return None
+    cikti = json.loads(r.stdout)
+    hepsi = True
+    for o, p_, h in zip(ornekler, py, cikti["sonuc"]):
+        esit = abs(p_ - h["arayuz"]) < 1e-9 and abs(p_ - h["fonksiyon"]) < 1e-9
+        hepsi &= esit
+        print(f"   {o} → Python {p_:.6f} | HTML {h['arayuz']:.6f}  {'EŞLEŞTİ' if esit else 'FARKLI!'}")
+    print(f"   Telefon genişliğinde (390 px) yatay taşma: {'VAR' if cikti['tasma'] else 'yok'}")
+    if not hepsi:
+        raise SystemExit("HATA: Python ve HTML tahminleri eşleşmiyor.")
+    print("   Tüm örneklerde Python ve HTML sonuçları birebir aynı.")
+    return True
+
+
+# =====================================================================
+def main():
+    OUT.mkdir(exist_ok=True)
+    print("1) Parametre tablosu:", parametre_tablosu_yaz().relative_to(KOK))
+
+    df = veri_uret()
+    with pd.ExcelWriter(OUT / "veri_seti.xlsx", engine="openpyxl") as xw:
+        df.to_excel(xw, sheet_name="veri", index=False)
+        excel_bicimle(xw.sheets["veri"])
+    print(f"2) Sentetik veri: outputs/veri_seti.xlsx ({len(df)} satır)")
+
+    final, secilen, adaylar, adimlar = ileri_secim(df)
+    model = model_json_olustur(final, secilen, adaylar)
+    (OUT / "model.json").write_text(json.dumps(model, ensure_ascii=False, indent=2), encoding="utf-8")
+    rapor_yaz(df, final, secilen, adimlar, model, len(adaylar))
+    print(f"3) Model: seçilen = {secilen}")
+    print(f"   R² = {final.rsquared:.4f}, düzeltilmiş R² = {final.rsquared_adj:.4f}")
+
+    html_yaz(model)
+    print("4) Arayüz: outputs/index.html")
+    dogrula(model)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Çevrim Süresi Tahmini</title>
+<style>
+:root{--bg:#f5f7fa;--kart:#fff;--yazi:#1d2733;--soluk:#5b6775;--vurgu:#2f5d8a;--cizgi:#d9e0e8;--uyari:#9a5b00;--uyari-bg:#fff4e0}
+@media (prefers-color-scheme:dark){:root{--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--yazi);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.25rem;margin:4px 0 2px}
+.demo{display:inline-block;font-size:.78rem;color:var(--uyari);background:var(--uyari-bg);border-radius:6px;padding:2px 8px;margin-bottom:12px}
+.kart{background:var(--kart);border:1px solid var(--cizgi);border-radius:12px;padding:16px;margin-bottom:14px}
+.sonuc{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:center}
+.sonuc .deger{font-size:2rem;font-weight:700;color:var(--vurgu);font-variant-numeric:tabular-nums}
+.sonuc .etiket{font-size:.85rem;color:var(--soluk)}
+.alan{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cizgi)}
+.alan:last-child{border-bottom:0}
+.alan label{font-size:.95rem}
+.alan small{color:var(--soluk)}
+input[type=number]{width:100%;padding:8px;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);text-align:right}
+input.disarida{border-color:var(--uyari);outline:2px solid var(--uyari)}
+.op{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;grid-column:1/-1}
+.op button{padding:10px 0;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);cursor:pointer}
+.op button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:#fff}
+.uyari{display:none;color:var(--uyari);background:var(--uyari-bg);border-radius:8px;padding:10px;font-size:.9rem;margin-bottom:14px}
+details{font-size:.85rem;color:var(--soluk)}
+code{font-size:.8rem;word-break:break-word}
+</style>
+</head>
+<body>
+<main>
+<h1>Washer tank montajı – çevrim süresi tahmini</h1>
+<div class="demo">Demo – sentetik veriyle eğitilmiştir</div>
+
+<div class="kart sonuc" aria-live="polite">
+  <div><div class="deger" id="sure">–</div><div class="etiket">Tahmini çevrim süresi (sn)</div></div>
+  <div><div class="deger" id="adet">–</div><div class="etiket">Saatlik üretim (adet)</div></div>
+</div>
+<div class="uyari" id="uyari"></div>
+
+<div class="kart" id="girdiler"></div>
+
+<details class="kart">
+  <summary>Model denklemi</summary>
+  <p><code id="denklem"></code></p>
+  <p id="bilgi"></p>
+</details>
+</main>
+<script>
+const MODEL = {"aciklama": "Demo – sentetik veriyle eğitilmiş çevrim süresi modeli (sn). tahmin = sabit + Σ katsayı × terim", "hedef": "cevrim_suresi_sn", "sabit": 41.36714176194705, "terimler": [{"ad": "1/operator", "degisken": "operator", "donusum": "ters", "donusum_formul": "1/operator", "katsayi": 16.215648912457922}, {"ad": "vida/operator", "degisken": "vida", "donusum": "bolu_n", "donusum_formul": "vida/operator", "katsayi": 9.487133125445798}, {"ad": "hortum/operator", "degisken": "hortum", "donusum": "bolu_n", "donusum_formul": "hortum/operator", "katsayi": 8.968089276653913}, {"ad": "klips/operator", "degisken": "klips", "donusum": "bolu_n", "donusum_formul": "klips/operator", "katsayi": 3.6293879526544353}, {"ad": "operator", "degisken": "operator", "donusum": "x", "donusum_formul": "operator", "katsayi": -7.834566323308112}, {"ad": "sensor/operator", "degisken": "sensor", "donusum": "bolu_n", "donusum_formul": "sensor/operator", "katsayi": 7.204109372316575}, {"ad": "pompa/operator", "degisken": "pompa", "donusum": "bolu_n", "donusum_formul": "pompa/operator", "katsayi": 9.619094270143135}, {"ad": "kaynak_m/operator", "degisken": "kaynak_m", "donusum": "bolu_n", "donusum_formul": "kaynak_m/operator", "katsayi": 12.271198403242426}, {"ad": "hacim_l/operator", "degisken": "hacim_l", "donusum": "bolu_n", "donusum_formul": "hacim_l/operator", "katsayi": 2.5657971012665843}, {"ad": "vida", "degisken": "vida", "donusum": "x", "donusum_formul": "vida", "katsayi": 0.7450435672465017}, {"ad": "hortum", "degisken": "hortum", "donusum": "x", "donusum_formul": "hortum", "katsayi": 1.0620977454225446}], "girdiler": [{"ad": "hacim_l", "etiket": "Depo hacmi", "birim": "L", "min": 2.5, "max": 6.5, "varsayilan": 3.5, "tamsayi": false, "adim": 0.1}, {"ad": "kaynak_m", "etiket": "Kaynak dikiş uzunluğu", "birim": "m", "min": 0.6, "max": 1.6, "varsayilan": 1.0, "tamsayi": false, "adim": 0.1}, {"ad": "vida", "etiket": "Vida sayısı", "birim": "adet", "min": 0, "max": 6, "varsayilan": 2, "tamsayi": true, "adim": 1}, {"ad": "klips", "etiket": "Klips sayısı", "birim": "adet", "min": 2, "max": 8, "varsayilan": 4, "tamsayi": true, "adim": 1}, {"ad": "hortum", "etiket": "Hortum bağlantısı", "birim": "adet", "min": 1, "max": 4, "varsayilan": 2, "tamsayi": true, "adim": 1}, {"ad": "pompa", "etiket": "Pompa sayısı", "birim": "adet", "min": 1, "max": 2, "varsayilan": 1, "tamsayi": true, "adim": 1}, {"ad": "sensor", "etiket": "Seviye sensörü", "birim": "adet", "min": 0, "max": 2, "varsayilan": 1, "tamsayi": true, "adim": 1}, {"ad": "operator", "etiket": "Operatör sayısı", "birim": "kişi", "min": 1, "max": 4, "varsayilan": 2, "tamsayi": true, "adim": 1}], "r2": 0.9946110360946351, "duzeltilmis_r2": 0.9943510422220079, "n_gozlem": 240};
+
+function terim(t, v) {
+  const n = v.operator;
+  if (t.donusum === "x") return v[t.degisken];
+  if (t.donusum === "ters") return 1 / n;
+  if (t.donusum === "bolu_n") return v[t.degisken] / n;
+  throw new Error(t.donusum);
+}
+function tahmin(v) {
+  let y = MODEL.sabit;
+  for (const t of MODEL.terimler) y += t.katsayi * terim(t, v);
+  return y;
+}
+window.tahmin = tahmin;
+
+const kutu = document.getElementById("girdiler");
+const deger = {};
+for (const g of MODEL.girdiler) {
+  deger[g.ad] = g.varsayilan;
+  const d = document.createElement("div");
+  d.className = "alan";
+  if (g.ad === "operator") {
+    d.innerHTML = `<label>${g.etiket} <small>(${g.min}–${g.max})</small></label><div></div>`;
+    const op = document.createElement("div");
+    op.className = "op";
+    for (let i = g.min; i <= g.max; i++) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = i; b.dataset.n = i;
+      b.setAttribute("aria-pressed", i === g.varsayilan);
+      b.onclick = () => {
+        deger.operator = i;
+        op.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+        hesapla();
+      };
+      op.appendChild(b);
+    }
+    d.appendChild(op);
+  } else {
+    d.innerHTML = `<label for="in_${g.ad}">${g.etiket} <small>(${g.birim}, ${g.min}–${g.max})</small></label>
+      <input type="number" id="in_${g.ad}" inputmode="decimal" step="${g.adim}" value="${g.varsayilan}">`;
+    d.querySelector("input").addEventListener("input", e => {
+      deger[g.ad] = e.target.value === "" ? NaN : Number(e.target.value);
+      hesapla();
+    });
+  }
+  kutu.appendChild(d);
+}
+
+function hesapla() {
+  const disarida = [];
+  for (const g of MODEL.girdiler) {
+    const v = deger[g.ad];
+    const kotu = !Number.isFinite(v) || v < g.min || v > g.max;
+    const inp = document.getElementById("in_" + g.ad);
+    if (inp) inp.classList.toggle("disarida", kotu);
+    if (kotu) disarida.push(`${g.etiket} (${g.min}–${g.max} ${g.birim})`);
+  }
+  const u = document.getElementById("uyari");
+  u.style.display = disarida.length ? "block" : "none";
+  u.textContent = disarida.length ? "Uyarı: model bu aralıkta eğitilmedi → " + disarida.join(", ") : "";
+  const tumSayi = MODEL.girdiler.every(g => Number.isFinite(deger[g.ad]));
+  const s = tumSayi ? tahmin(deger) : NaN;
+  const sEl = document.getElementById("sure"), aEl = document.getElementById("adet");
+  sEl.dataset.ham = s;
+  sEl.textContent = Number.isFinite(s) ? s.toFixed(1) : "–";
+  aEl.textContent = Number.isFinite(s) && s > 0 ? (3600 / s).toFixed(1) : "–";
+}
+
+document.getElementById("denklem").textContent = "çevrim_sn = " + MODEL.sabit.toFixed(3) + " " +
+  MODEL.terimler.map(t => (t.katsayi >= 0 ? "+ " : "− ") + Math.abs(t.katsayi).toFixed(3) + "·" + t.ad).join(" ");
+document.getElementById("bilgi").textContent =
+  `R² = ${MODEL.r2.toFixed(4)}, düzeltilmiş R² = ${MODEL.duzeltilmis_r2.toFixed(4)}, ${MODEL.n_gozlem} sentetik gözlem.`;
+hesapla();
+</script>
+</body>
+</html>
