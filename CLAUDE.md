@@ -22,6 +22,9 @@
 2. Sentetik veri → `outputs/veri_seti.xlsx`
    çevrim süresi = iş içeriği / operatör sayısı × (1 + denge kaybı) + normal gürültü,
    operatör sayısı 1–4, sabit random seed.
+   Öncelik + bağlı iş kısıtı: işler sabit sırada (seri zincir), bağlı işler tek blok
+   ve farklı operatörlere bölünemez. Hat her ürün için optimum dengelenir (DP);
+   çevrim = en yüklü istasyon, denge kaybı varsayılmaz, hesaplanır.
 3. İleri (forward stepwise) regresyon; operatör için hem n hem 1/n aday
    → `outputs/rapor.md` (başta: "Bu sonuçlar sentetik veriye dayanan bir demodur"),
    `outputs/model.json`.

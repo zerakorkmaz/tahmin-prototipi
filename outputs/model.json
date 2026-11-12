@@ -1,84 +1,77 @@
 {
   "aciklama": "Demo – sentetik veriyle eğitilmiş çevrim süresi modeli (sn). tahmin = sabit + Σ katsayı × terim",
   "hedef": "cevrim_suresi_sn",
-  "sabit": 41.36714176194705,
+  "sabit": 12.528343490279253,
   "terimler": [
     {
       "ad": "1/operator",
       "degisken": "operator",
       "donusum": "ters",
       "donusum_formul": "1/operator",
-      "katsayi": 16.215648912457922
+      "katsayi": 41.50180620554363
     },
     {
       "ad": "vida/operator",
       "degisken": "vida",
       "donusum": "bolu_n",
       "donusum_formul": "vida/operator",
-      "katsayi": 9.487133125445798
+      "katsayi": 10.88437980830213
     },
     {
       "ad": "hortum/operator",
       "degisken": "hortum",
       "donusum": "bolu_n",
       "donusum_formul": "hortum/operator",
-      "katsayi": 8.968089276653913
+      "katsayi": 9.829361161207563
     },
     {
       "ad": "klips/operator",
       "degisken": "klips",
       "donusum": "bolu_n",
       "donusum_formul": "klips/operator",
-      "katsayi": 3.6293879526544353
-    },
-    {
-      "ad": "operator",
-      "degisken": "operator",
-      "donusum": "x",
-      "donusum_formul": "operator",
-      "katsayi": -7.834566323308112
+      "katsayi": 4.00003260409845
     },
     {
       "ad": "sensor/operator",
       "degisken": "sensor",
       "donusum": "bolu_n",
       "donusum_formul": "sensor/operator",
-      "katsayi": 7.204109372316575
-    },
-    {
-      "ad": "pompa/operator",
-      "degisken": "pompa",
-      "donusum": "bolu_n",
-      "donusum_formul": "pompa/operator",
-      "katsayi": 9.619094270143135
+      "katsayi": 6.922104083991439
     },
     {
       "ad": "kaynak_m/operator",
       "degisken": "kaynak_m",
       "donusum": "bolu_n",
       "donusum_formul": "kaynak_m/operator",
-      "katsayi": 12.271198403242426
+      "katsayi": 12.77715336352696
+    },
+    {
+      "ad": "pompa/operator",
+      "degisken": "pompa",
+      "donusum": "bolu_n",
+      "donusum_formul": "pompa/operator",
+      "katsayi": 7.851659913598677
     },
     {
       "ad": "hacim_l/operator",
       "degisken": "hacim_l",
       "donusum": "bolu_n",
       "donusum_formul": "hacim_l/operator",
-      "katsayi": 2.5657971012665843
+      "katsayi": 2.6633896681783202
     },
     {
       "ad": "vida",
       "degisken": "vida",
       "donusum": "x",
       "donusum_formul": "vida",
-      "katsayi": 0.7450435672465017
+      "katsayi": -0.8987867144879014
     },
     {
-      "ad": "hortum",
-      "degisken": "hortum",
+      "ad": "klips",
+      "degisken": "klips",
       "donusum": "x",
-      "donusum_formul": "hortum",
-      "katsayi": 1.0620977454225446
+      "donusum_formul": "klips",
+      "katsayi": -0.595255115364373
     }
   ],
   "girdiler": [
@@ -163,7 +156,7 @@
       "adim": 1
     }
   ],
-  "r2": 0.9946110360946351,
-  "duzeltilmis_r2": 0.9943510422220079,
+  "r2": 0.9951013583375329,
+  "duzeltilmis_r2": 0.9948874438544557,
   "n_gozlem": 240
 }

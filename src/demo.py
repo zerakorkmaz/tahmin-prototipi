@@ -65,6 +65,17 @@ PARAMETRELER = [
          kaynak="[S12] dikiş hattı: %58 → yeniden dengeleme sonrası %25"),
     dict(parametre="Hat verimi hedefi (elle montaj)", min=85, tipik=None, max=90, birim="%",
          kaynak="[S13] '85–90%: standart hedef' (uygulayıcı makalesi, hakemsiz)"),
+    dict(parametre="Hat dengeleme – iş bölünemezliği", min=None, tipik=None, max=None, birim="–",
+         kaynak="[S17] model varsayımı: 'The task cannot be subdivided.' ve 'precedence relationship ... is "
+                "known and invariable'; ayrıca zoning (aynı/ayrı istasyon) kısıtları"),
+    dict(parametre="Hat dengeleme – aynı istasyon (pozitif zoning) kısıtı", min=None, tipik=None, max=None, birim="–",
+         kaynak="[S18] bazı işler 'have to be assigned to the same workstation' (uyumlu işler) ya da aynı "
+                "istasyonda yapılamaz (uyumsuz işler)"),
+    dict(parametre="Hat dengeleme – öncelik kısıtı", min=None, tipik=None, max=None, birim="–",
+         kaynak="[S19] 'no task is assigned to an earlier station than its predecessor'; çevrim süresi = en "
+                "yüklü istasyon (örnek: c_min = 59 sn → 3600/59 = 61 adet/saat)"),
+    dict(parametre="Çevrim süresinin alt sınırı = en uzun bölünemez iş", min=None, tipik=None, max=None, birim="–",
+         kaynak="[S20] çözümlü örnek: günlük çevrim sayısı en uzun operasyonla (8 dk) sınırlanıyor"),
     dict(parametre="1 TMU", min=None, tipik=0.036, max=None, birim="sn",
          kaynak="[S14] 1 TMU = 0,036 sn (MTM tablo değerlerine erişilemedi, bkz. not)"),
     dict(parametre="Cam suyu deposu hacmi (binek araç)", min=2.8, tipik=None, max=6.2, birim="L",
@@ -99,9 +110,13 @@ ELEMENTLER = {
                        "Hortum için sayısal kaynak bulunamadı."),
     "sizdirmazlik":   (20, 25, 30, "sn/ürün",
                        "[S6] benzer otomotiv parçaları 20–30 sn; tipik değer orta nokta (VARSAYIM)."),
-    "denge_kaybi":    (0.10, 0.15, 0.20, "oran",
-                       "[S11] %10–20 'iyi' bandı. n=1 iken denge kaybı 0 (VARSAYIM: tek istasyonda boşta "
-                       "bekleme yok); n≥2 için satır başına bu aralıktan düzgün dağılımla çekildi."),
+    "denge_kaybi":    (None, None, None, "oran",
+                       "Varsayılmıyor, HESAPLANIYOR: öncelik sırası + bağlı (bölünemez) işler kısıtıyla hat her "
+                       "ürün için optimum dengelenir; denge kaybı = n·C / iş içeriği − 1. Sonuç [S11] %10–20 "
+                       "bandıyla karşılaştırılır."),
+    "vida_per_braket": (None, 2, None, "vida/braket",
+                       "VARSAYIM: vidalar braketleri tutar; bir braket ve onun 2 vidası aynı operatörce takılır "
+                       "(bağlı iş). Tek kalan vida tek başına bir blok."),
     "gurultu_sd":     (None, GURULTU_SD, None, "sn",
                        "VARSAYIM: operatör performans farkı, küçük duruşlar vb. için normal gürültü."),
 }
@@ -158,7 +173,33 @@ KAYNAKLAR = {
            "diy/model3/en_us/GUID-3A80A08E-9DCB-45A4-9796-BCD9153A4A00.html",
     "S16": "VWmanual.ru (t.y.). Windscreen washer fluid level (Passat B5, bağımsız el kitabı sitesi). "
            "https://vwmanual.ru/en/passat/b5/main/checks/uroven-zhidkosti-stekloomyvatelya",
+    "S17": "Triki, H., Hachicha, W., Mellouli, A., Masmoudi, F. (2015). An Assembly Line Balancing Problem "
+           "Automotive Cables. Management and Production Engineering Review 6(1), 59–66. DOI: 10.1515/mper-2015-0008",
+    "S18": "Hamzadayı, A. (2022). Benders Decomposition Algorithm for Solving the Type-II Simple Assembly Line "
+           "Balancing Problem with Zoning Restrictions. Yüzüncü Yıl Üniv. Fen Bilimleri Enst. Dergisi 27(2), "
+           "400–415. DOI: 10.53433/yyufbed.1080238",
+    "S19": "Sgarbossa, F. (t.y.). Assembly Systems Design and Balancing (ders sunumu, NTNU TPK4191). "
+           "https://jvatn.folk.ntnu.no/eLearning/TPK4191/slides/Fabio_AS_DesignAndBalancing.pdf",
+    "S20": "King Saud Univ. IE 314 Operations Management II, Lecture 5: Assembly-Line Balancing (t.y.). "
+           "https://faculty.ksu.edu.sa/sites/default/files/line_balancing.pdf",
 }
+
+# --- Öncelik sırası ve bağlı işler (VARSAYIM: washer tank montaj mantığı) ---
+# Sıra: kaynak → pompa(+hortumu) → sensör → diğer hortumlar → braket+vidalar → klipsler → test → son işlemler.
+# Basitlik için öncelik ilişkisi tek bir zincir (seri sıra) kabul edildi: her iş bir öncekinden sonra gelir,
+# bu yüzden bir operatöre ancak art arda gelen işler verilebilir. Bir 'blok' bölünemez; tek operatöre gider.
+IS_LISTESI_ACIKLAMA = [
+    ("1", "Depoyu kaynak makinesine yükle + sıcak plaka kaynağı", "Bölünemez (makineyi besleyen operatör kaynağı da yapar)",
+     "VARSAYIM; makine işi olduğu için ikiye bölünemez [S17]"),
+    ("2", "Her pompa + o pompanın hortum bağlantısı", "Bağlı iş: aynı operatör (pozitif zoning)",
+     "VARSAYIM; pompa çıkışına hortum, pompayı takan kişi tarafından bağlanır [S18]"),
+    ("3", "Her seviye sensörü", "Tek iş", "VARSAYIM"),
+    ("4", "Kalan her hortum bağlantısı", "Tek iş", "VARSAYIM"),
+    ("5", "Her braket + vidaları (2 vida/braket)", "Bağlı iş: aynı operatör", "VARSAYIM [S18]"),
+    ("6", "Her klips", "Tek iş", "VARSAYIM"),
+    ("7", "Depoyu test cihazına yükle + sızdırmazlık testi", "Bölünemez (makine işi)", "VARSAYIM [S17]"),
+    ("8", "Etiket, görsel kontrol, kutulama + son taşıma", "Tek iş", "VARSAYIM"),
+]
 
 
 def t(anahtar):
@@ -200,6 +241,8 @@ def parametre_tablosu_yaz():
         "kısıtlı olduğu için okunamadı. Bu yüzden element süreleri Boothroyd-Dewhurst DFA tablolarından alındı.",
         "Pompa, sensör ve hortum için doğrudan sayısal kaynak bulunamadı → VARSAYIM.",
         "Washer tank için doğrudan sızdırmazlık testi süresi bulunamadı; benzer otomotiv parçaları kullanıldı.",
+        "Öncelik sırası ve bağlı iş grupları (is_listesi_oncelik sayfası) gerçek bir hattan değil, montaj "
+        "mantığından türetilmiş VARSAYIM'lardır; kısıt türleri [S17]–[S20] literatüründen alınmıştır.",
     ]})
     DATA.mkdir(exist_ok=True)
     yol = DATA / "parametreler.xlsx"
@@ -207,6 +250,9 @@ def parametre_tablosu_yaz():
         df.to_excel(xw, sheet_name="parametreler", index=False)
         kay.to_excel(xw, sheet_name="kaynaklar", index=False)
         notlar.to_excel(xw, sheet_name="notlar", index=False)
+        isl = pd.DataFrame(IS_LISTESI_ACIKLAMA, columns=["sira", "is_blogu", "kisit", "kaynak/VARSAYIM"])
+        isl.to_excel(xw, sheet_name="is_listesi_oncelik", index=False)
+        excel_bicimle(xw.sheets["is_listesi_oncelik"], {2: 55, 3: 55, 4: 70})
         excel_bicimle(xw.sheets["parametreler"], {1: 26, 2: 46, 7: 90})
         excel_bicimle(xw.sheets["kaynaklar"], {2: 140})
         excel_bicimle(xw.sheets["notlar"], {1: 140})
@@ -233,6 +279,59 @@ def is_icerigi(d):
             + t("sizdirmazlik"))
 
 
+def is_bloklari(d):
+    """Ürünün iş bloklarını öncelik sırasıyla döndürür: [(ad, süre_sn), ...].
+    Her blok bölünemez; tek bir operatöre atanır. Toplamı is_icerigi(d)'ye eşittir."""
+    tl = t("tasima_per_l") * d["hacim_l"]
+    b = [("Yükleme+kaynak", 0.5 * tl + t("kaynak_sabit") + t("kaynak_per_m") * d["kaynak_m"])]
+    pompa_hortum = min(d["pompa"], d["hortum"])
+    for i in range(d["pompa"]):
+        b.append((f"Pompa{i + 1}" + ("+hortum" if i < pompa_hortum else ""),
+                  t("pompa") + (t("hortum") if i < pompa_hortum else 0)))
+    for i in range(d["sensor"]):
+        b.append((f"Sensör{i + 1}", t("sensor")))
+    for i in range(d["hortum"] - pompa_hortum):
+        b.append((f"Hortum{i + 1}", t("hortum")))
+    vpb = ELEMENTLER["vida_per_braket"][1]
+    kalan = d["vida"]
+    j = 0
+    while kalan > 0:
+        k = min(vpb, kalan)
+        j += 1
+        b.append((f"Braket{j}({k} vida)", t("vida") * k))
+        kalan -= k
+    for i in range(d["klips"]):
+        b.append((f"Klips{i + 1}", t("klips")))
+    b.append(("Yükleme+test", 0.25 * tl + t("sizdirmazlik")))
+    b.append(("Etiket+kutulama", 0.25 * tl + t("sabit_is")))
+    return b
+
+
+def hat_dengele(sureler, n):
+    """Seri öncelik zincirindeki blokları n operatöre (istasyona) art arda gruplar halinde böler ve
+    en yüklü istasyonu en aza indirir (tam çözüm, dinamik programlama).
+    Döndürür: (çevrim süresi = en yüklü istasyon, istasyon yükleri listesi)."""
+    k = len(sureler)
+    n = min(n, k)
+    on = np.concatenate([[0.0], np.cumsum(sureler)])
+    INF = float("inf")
+    dp = [[INF] * (k + 1) for _ in range(n + 1)]
+    kes = [[0] * (k + 1) for _ in range(n + 1)]
+    dp[0][0] = 0.0
+    for s in range(1, n + 1):
+        for i in range(1, k + 1):
+            for j in range(s - 1, i):
+                v = max(dp[s - 1][j], on[i] - on[j])
+                if v < dp[s][i]:
+                    dp[s][i], kes[s][i] = v, j
+    yukler, i = [], k
+    for s in range(n, 0, -1):
+        j = kes[s][i]
+        yukler.append(on[i] - on[j])
+        i = j
+    return dp[n][k], yukler[::-1]
+
+
 def veri_uret():
     rng = np.random.default_rng(SEED)
     satirlar = []
@@ -243,11 +342,19 @@ def veri_uret():
                 _, _, mn, mx, _, tam, _ = GIRDILER[k]
                 d[k] = int(rng.integers(mn, mx + 1)) if tam else round(float(rng.uniform(mn, mx)), 2)
             d["operator"] = n
-            mn_b, _, mx_b, _, _ = ELEMENTLER["denge_kaybi"]
-            d["denge_kaybi"] = 0.0 if n == 1 else round(float(rng.uniform(mn_b, mx_b)), 3)
-            d["is_icerigi_sn"] = round(is_icerigi(d), 2)
-            d["cevrim_suresi_sn"] = round(d["is_icerigi_sn"] / n * (1 + d["denge_kaybi"])
-                                          + float(rng.normal(0, GURULTU_SD)), 2)
+            bloklar = is_bloklari(d)
+            sureler = [s for _, s in bloklar]
+            C, yukler = hat_dengele(sureler, n)
+            W = is_icerigi(d)
+            assert abs(W - sum(sureler)) < 1e-9
+            enb = max(bloklar, key=lambda x: x[1])
+            d["is_icerigi_sn"] = round(W, 2)
+            d["en_uzun_bagli_is"] = enb[0]
+            d["en_uzun_bagli_is_sn"] = round(enb[1], 2)
+            d["istasyon_yukleri_sn"] = " | ".join(f"{y:.1f}" for y in yukler)
+            d["cevrim_gurultusuz_sn"] = round(C, 2)
+            d["denge_kaybi"] = round(n * C / W - 1, 4)
+            d["cevrim_suresi_sn"] = round(C + float(rng.normal(0, GURULTU_SD)), 2)
             d["kaynak"] = "sentetik"
             satirlar.append(d)
     df = pd.DataFrame(satirlar)
@@ -362,7 +469,26 @@ def rapor_yaz(df, final, secilen, adimlar, model, aday_sayisi):
     s.append(f"- Satır sayısı gerekçesi: {aday_sayisi} aday terim var. Yaygın kural olan 'aday değişken başına "
              f"en az 10–15 gözlem' ile 160–240 satır gerekir; üst sınır seçildi ve operatör seviyeleri dengeli tutuldu.")
     s.append("- Üretim formülü: `çevrim = iş_içeriği / n × (1 + denge_kaybı) + N(0, "
-             f"{GURULTU_SD}²)`; n=1 iken denge kaybı 0, n≥2 iken %10–20.\n")
+             f"{GURULTU_SD}²)`.")
+    s.append("- **Öncelik ve bağlı iş kısıtı:** İşler sabit bir sırayla yapılır (kaynak → pompa+hortum → sensör → "
+             "hortumlar → braket+vidalar → klipsler → test → kutulama). Bağlı işler (yükleme+kaynak, pompa+kendi "
+             "hortumu, braket+vidaları, yükleme+test) tek blok sayılır ve **farklı operatörlere bölünemez** "
+             "[S17], [S18]. Her ürün için bloklar n operatöre sırayı bozmadan, en yüklü istasyonu en aza "
+             "indirecek şekilde (tam çözüm) dağıtılır. Çevrim süresi en yüklü istasyonun süresidir [S19], bu "
+             "yüzden **en uzun bağlı işin altına inemez** [S20].")
+    s.append("- Bu yüzden denge kaybı artık varsayılmıyor, kısıtlardan **hesaplanıyor**: "
+             "`denge_kaybı = n × çevrim / iş_içeriği − 1`.\n")
+    s.append("| Operatör | Ort. denge kaybı | Min | Maks | Çevrim / en uzun bağlı iş (ort. – min) |")
+    s.append("|---|---|---|---|---|")
+    for n_, g in df.groupby("operator"):
+        oran = g["cevrim_gurultusuz_sn"] / g["en_uzun_bagli_is_sn"]
+        s.append(f"| {n_} | %{100 * g.denge_kaybi.mean():.1f} | %{100 * g.denge_kaybi.min():.1f} | "
+                 f"%{100 * g.denge_kaybi.max():.1f} | {oran.mean():.2f} – {oran.min():.2f} |")
+    s.append("\nLiteratürde %10–20 denge kaybı 'iyi', %20 üstü 'kötü' sayılıyor [S11]. Operatör sayısı arttıkça "
+             "kısıtlar yüzünden kaybın büyümesi beklenen bir sonuç. Son sütun 1'e ne kadar yakınsa hat o kadar en uzun "
+             "bağlı işe (burada hep yükleme+kaynak) dayanmış demektir; 1'e ulaştığında operatör eklemek çevrimi artık "
+             "kısaltmaz. Bu varsayımlarla 1–4 operatörde bu sınıra henüz değilmiyor, sınır daha fazla operatörde devreye "
+             "girer.\n")
     s.append("## Aday değişkenler\n")
     s.append("Ürün değişkenleri (hacim, kaynak uzunluğu, vida, klips, hortum, pompa, sensör), operatör için "
              "**n** ve **1/n**, ayrıca her ürün değişkeninin **n'e bölünmüş** hali (çünkü üretim formülünde iş "
@@ -390,7 +516,7 @@ def rapor_yaz(df, final, secilen, adimlar, model, aday_sayisi):
     s.append("- Operatör etkisi n ile değil **1/n** ile (ve ürün değişkenleri / n ile) yakalanıyor: bu, süreyi "
              "operatör sayısına bölen üretim formülüyle uyumlu.")
     # beklenen katsayı karşılaştırması
-    ort_carp = df.loc[df.operator >= 2, "denge_kaybi"].mean() + 1
+    ort_carp = df["denge_kaybi"].mean() + 1
     karsi = {"vida": "vida", "klips": "klips", "hortum": "hortum", "pompa": "pompa", "sensor": "sensor",
              "hacim_l": "tasima_per_l", "kaynak_m": "kaynak_per_m"}
     satir = []
