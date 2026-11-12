@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Çevrim Tahmini Nasıl Çalışır</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Düzen: tek sütun okuma metni; hesap adımları sıralı, örnek kutuları ve iş çubuğu öne çıkan tek nesneler */
+:root{
+  --zemin:#f6f7f9; --yuzey:#ffffff; --metin:#1c2430; --soluk:#5a6574; --cizgi:#dde2e8;
+  --vurgu:#2f5d8a; --makine:#b7791f; --not-zemin:#fff6e5; --not-metin:#7a4b00;
+  --yazi:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --sayi:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --zemin:#11161d; --yuzey:#19202a; --metin:#e5eaf0; --soluk:#9aa5b3; --cizgi:#2a3441;
+  --vurgu:#86b4e2; --makine:#e2a64a; --not-zemin:#33270f; --not-metin:#f3c77a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --zemin:#11161d; --yuzey:#19202a; --metin:#e5eaf0; --soluk:#9aa5b3; --cizgi:#2a3441;
+  --vurgu:#86b4e2; --makine:#e2a64a; --not-zemin:#33270f; --not-metin:#f3c77a; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--zemin);color:var(--metin);font:16px/1.6 var(--yazi)}
+main{max-width:720px;margin:0 auto;padding-block:28px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:36px}
+h1,h2,h3{text-wrap:balance;line-height:1.25;margin:0}
+h1{font-size:1.9rem;font-weight:600}
+h2{font-size:1.3rem;font-weight:600}
+h3{font-size:1.05rem;font-weight:600}
+p{margin:0}
+section{display:flex;flex-direction:column;gap:14px}
+.ust-etiket{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--soluk)}
+.giris{display:flex;flex-direction:column;gap:12px}
+.ozet{font-size:1.15rem;line-height:1.55}
+.demo-not{align-self:flex-start;font-size:.85rem;background:var(--not-zemin);color:var(--not-metin);border-radius:6px;padding:4px 10px}
+.sayi{font-family:var(--sayi);font-variant-numeric:tabular-nums}
+.tablo-kap{overflow-x:auto;border:1px solid var(--cizgi);border-radius:10px;background:var(--yuzey)}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--cizgi);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-weight:600;color:var(--soluk);font-size:.8rem;letter-spacing:.04em;text-transform:uppercase}
+td.sag,th.sag{text-align:right}
+.adimlar{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:22px;counter-reset:adim}
+.adimlar>li{display:grid;grid-template-columns:36px 1fr;gap:4px 12px;counter-increment:adim}
+.adimlar>li::before{content:counter(adim);grid-column:1;grid-row:1;width:30px;height:30px;border-radius:50%;
+  border:1.5px solid var(--vurgu);color:var(--vurgu);display:grid;place-items:center;font-weight:600;font-family:var(--sayi)}
+.adimlar>li>*{min-width:0;grid-column:2}
+.ornek{background:var(--yuzey);border:1px solid var(--cizgi);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.ornek .baslik{font-size:.8rem;color:var(--soluk);letter-spacing:.04em;text-transform:uppercase}
+.denklem{font-family:var(--sayi);font-size:.92rem;line-height:1.7;word-break:break-word}
+ul.kurallar{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.cubuklar{display:flex;flex-direction:column;gap:14px}
+.op .ad{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;font-size:.92rem;margin-bottom:5px}
+.iz{display:flex;gap:2px;height:22px;border-radius:4px;overflow:hidden}
+.iz span{display:block;height:100%}
+.iz .el{background:var(--vurgu)}
+.iz .mak{background:var(--makine)}
+.iz .bos{background:transparent;border:1px dashed var(--cizgi);border-left:0}
+.op .isler{font-size:.8rem;color:var(--soluk);margin-top:4px}
+.lejant{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.85rem;color:var(--soluk)}
+.lejant i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.sonuc-satir{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.sonuc-satir div{border-top:2px solid var(--vurgu);padding-top:8px}
+.sonuc-satir b{display:block;font-family:var(--sayi);font-size:1.5rem;font-weight:500}
+.sonuc-satir small{color:var(--soluk)}
+.seviyeler{display:grid;gap:10px}
+.seviye{border:1px solid var(--cizgi);border-radius:10px;padding:12px 14px;background:var(--yuzey)}
+.seviye.secili{border-color:var(--vurgu);box-shadow:inset 3px 0 0 var(--vurgu)}
+.seviye p{font-size:.92rem;color:var(--soluk)}
+.seviye h3 span{font-weight:400;color:var(--soluk);font-size:.9rem}
+.kaynak{font-size:.85rem;color:var(--soluk);display:flex;flex-direction:column;gap:6px;padding-left:18px;margin:0}
+a{color:var(--vurgu)}
+a:focus-visible{outline:2px solid var(--vurgu);outline-offset:2px}
+footer{font-size:.85rem;color:var(--soluk);border-top:1px solid var(--cizgi);padding-top:14px}
+</style>
+
+</head>
+<body>
+<main>
+  <header class="giris">
+    <span class="ust-etiket">Montaj hattı standart süreleri · bitirme projesi</span>
+    <h1>Çevrim süresi tahmin modeli nasıl çalışır?</h1>
+    <p class="ozet">Ürünün içindeki işleri sayıyoruz, her işin süresini literatürden alıyoruz ve işleri operatörlere
+      paylaştırıyoruz. <strong>En çok iş düşen operatörün süresi, hattın çevrim süresidir.</strong>
+      Saatlik üretim de buradan çıkar: 3600 ÷ çevrim süresi.</p>
+    <span class="demo-not">Demo: ölçülmüş veri yok, sayılar literatür ve varsayımlardan üretildi</span>
+  </header>
+
+  <section>
+    <h2>Modele ne giriyor?</h2>
+    <p>Ürünü parça adıyla değil, yapılan işin türüyle tarif ediyoruz. Böylece aynı model cam suyu deposu için de,
+      dikiz aynası için de çalışıyor. Sadece sayılar değişiyor.</p>
+    <div class="tablo-kap">
+      <table>
+        <thead><tr><th>İş türü</th><th class="sag">Tipik süre</th><th class="sag">Washer tank</th><th class="sag">Dikiz aynası</th></tr></thead>
+        <tbody>
+          <tr><td>Kolay parça yerleştirme <br><small>küçük, kendiliğinden oturan</small></td><td class="sag sayi">3,0 sn</td><td class="sag sayi">2</td><td class="sag sayi">3</td></tr>
+          <tr><td>Zor parça yerleştirme <br><small>hizalanan, bastırılarak takılan</small></td><td class="sag sayi">8,5 sn</td><td class="sag sayi">1</td><td class="sag sayi">2</td></tr>
+          <tr><td>Vida</td><td class="sag sayi">9,8 sn</td><td class="sag sayi">2</td><td class="sag sayi">4</td></tr>
+          <tr><td>Geçme (klips)</td><td class="sag sayi">3,5 sn</td><td class="sag sayi">4</td><td class="sag sayi">6</td></tr>
+          <tr><td>Esnek bağlantı <br><small>hortum, kablo soketi</small></td><td class="sag sayi">8,0 sn</td><td class="sag sayi">2</td><td class="sag sayi">2</td></tr>
+          <tr><td>Görsel kontrol</td><td class="sag sayi">2,0 sn</td><td class="sag sayi">2</td><td class="sag sayi">3</td></tr>
+          <tr><td>Makine işlemi 1 <br><small>kaynak, pres</small></td><td class="sag sayi">girilir</td><td class="sag sayi">30 sn</td><td class="sag sayi">yok</td></tr>
+          <tr><td>Makine işlemi 2 <br><small>sızdırmazlık / fonksiyon testi</small></td><td class="sag sayi">girilir</td><td class="sag sayi">25 sn</td><td class="sag sayi">15 sn</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><small>Vida, parça ve geçme süreleri Boothroyd-Dewhurst montaj tasarımı (DFA) tablolarından alındı. Bağlantı ve
+      kontrol süreleri ile aynanın tüm sayıları <strong>VARSAYIM</strong>. Ayrıca gövde kütlesi ve operatör sayısı da girilir.</small></p>
+  </section>
+
+  <section>
+    <h2>Süre üç adımda hesaplanıyor</h2>
+    <p>Örnek: washer tank, 2 operatör.</p>
+    <ol class="adimlar">
+      <li>
+        <h3>Bütün işleri topla</h3>
+        <p>Her iş türünün adedi, süresiyle çarpılıp toplanır. Buna toplam iş içeriği denir; tek bir kişinin ürünü
+          baştan sona yapma süresidir.</p>
+        <div class="ornek">
+          <span class="baslik">Washer tank</span>
+          <p class="denklem">2×3,0 + 1×8,5 + 2×9,8 + 4×3,5 + 2×8,0 + 2×2,0 + 30 + 25 + taşıma ve etiket ≈ <b>146,8 sn</b></p>
+        </div>
+      </li>
+      <li>
+        <h3>İşleri operatörlere paylaştır</h3>
+        <p>İşler, aşağıdaki üç kurala uyarak operatörlere en dengeli şekilde dağıtılır:</p>
+        <ul class="kurallar">
+          <li><strong>Sıra bozulmaz.</strong> Kaynak, parça takmadan önce; test, en sonda yapılır.</li>
+          <li><strong>Bağlı işler bölünmez.</strong> Bir parçayı takan kişi onun vidalarını da sıkar.</li>
+          <li><strong>Makine işlemi tek kişidedir.</strong> 30 sn'lik kaynak iki kişiye bölünüp 15 sn olmaz.</li>
+        </ul>
+      </li>
+      <li>
+        <h3>En çok iş düşen operatörü bul</h3>
+        <p>Hat, en yavaş operatörün hızında akar. Diğerleri kalan sürede bekler.</p>
+        <div class="ornek">
+          <span class="baslik">Washer tank, 2 operatör</span>
+          <div class="cubuklar" role="img" aria-label="Operatör 1: 74,0 saniye, operatör 2: 72,8 saniye; çevrim süresi 74,0 saniye">
+            <div class="op">
+              <div class="ad"><span>Operatör 1 · en yüklü</span><span class="sayi">74,0 sn</span></div>
+              <div class="iz">
+                <span class="el" style="width:3.9%" title="Gövde yükleme 2,9 sn"></span>
+                <span class="mak" style="width:40.5%" title="Kaynak 30 sn"></span>
+                <span class="el" style="width:38.0%" title="Zor parça + 2 vida 28,1 sn"></span>
+                <span class="el" style="width:8.1%" title="2 kolay parça 6,0 sn"></span>
+                <span class="el" style="width:9.5%" title="2 geçme 7,0 sn"></span>
+              </div>
+              <div class="isler">yükleme + kaynak → zor parça ve 2 vidası → 2 kolay parça → 2 geçme</div>
+            </div>
+            <div class="op">
+              <div class="ad"><span>Operatör 2 · 1,2 sn bekler</span><span class="sayi">72,8 sn</span></div>
+              <div class="iz">
+                <span class="el" style="width:9.5%" title="2 geçme 7,0 sn"></span>
+                <span class="el" style="width:21.6%" title="2 bağlantı 16,0 sn"></span>
+                <span class="el" style="width:5.4%" title="2 kontrol 4,0 sn"></span>
+                <span class="el" style="width:3.9%" title="Yükleme 2,9 sn"></span>
+                <span class="mak" style="width:33.8%" title="Sızdırmazlık testi 25 sn"></span>
+                <span class="el" style="width:24.2%" title="Etiket ve kutulama 17,9 sn"></span>
+                <span class="bos" style="width:1.6%" title="Bekleme 1,2 sn"></span>
+              </div>
+              <div class="isler">2 geçme → 2 bağlantı → 2 kontrol → yükleme + test → etiket ve kutulama</div>
+            </div>
+          </div>
+          <div class="lejant"><span><i style="background:var(--vurgu)"></i>Elle iş</span><span><i style="background:var(--makine)"></i>Makine işlemi</span></div>
+          <div class="sonuc-satir">
+            <div><b>74,0 sn</b><small>çevrim süresi</small></div>
+            <div><b>48,6 adet</b><small>saatlik üretim (3600 ÷ 74,0)</small></div>
+          </div>
+        </div>
+        <p>İki kişiye bölünce süre tam yarıya inmiyor (146,8 ÷ 2 = 73,4 yerine 74,0). Aradaki küçük kayba
+          <strong>denge kaybı</strong> denir. Operatör sayısı arttıkça bölünemeyen işler yüzünden bu kayıp büyür.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Regresyon ne işe yarıyor?</h2>
+    <p>Yukarıdaki hesapla 400 farklı sanal ürün oluşturduk ve her birinin süresine küçük bir rastgele sapma ekledik.
+      İleri adımlı regresyon bu verilerden, girdileri süreye bağlayan tek bir formül öğrendi. Formülün ana kısmı şöyle:</p>
+    <div class="ornek">
+      <span class="baslik">Öğrenilen formülün ana kısmı</span>
+      <p class="denklem">çevrim ≈ (9,9×vida + 8,7×zor parça + 8,6×bağlantı + 3,9×geçme + 3,1×kolay parça + 1,9×kontrol + makine süreleri + …) ÷ operatör sayısı + küçük düzeltmeler</p>
+    </div>
+    <p>Formüldeki çarpanlar, verdiğimiz iş sürelerine çok yakın çıktı. Örneğin vida için 9,8 sn verdik, model 9,9 sn
+      buldu. Washer tank örneğinde model 75,3 sn tahmin ediyor, adım adım hesap 74,0 sn veriyor.</p>
+    <p>Asıl amaç şu: firma gerçek süreleri ölçtüğünde, aynı regresyon bu kez gerçek veriyle kurulacak. O zaman
+      çarpanlar literatürden değil, firmanın kendi hattından gelecek.</p>
+  </section>
+
+  <section>
+    <h2>Neden "pompa takma" değil de "zor parça"?</h2>
+    <div class="seviyeler">
+      <div class="seviye">
+        <h3>Ürüne özel iş <span>· pompa takma, hortum takma</span></h3>
+        <p>Firma için en tanıdık dil, ama başka ürüne taşınamaz. Aynada pompa yoktur.</p>
+      </div>
+      <div class="seviye secili">
+        <h3>Genel iş türü <span>· zor parça, vida, bağlantı (seçilen)</span></h3>
+        <p>Her ürüne uyar, az sayıda girdi ister. Uluslararası MTM-UAS sistemi de bu seviyede çalışır.</p>
+      </div>
+      <div class="seviye">
+        <h3>Hareket bazlı <span>· uzan, kavra, taşı, bırak (MTM-1)</span></h3>
+        <p>En ayrıntılısı, ama eğitimli analist ve lisanslı tablolar ister. Bu seviye, iş türlerinin sürelerini
+          doğrulamak için kullanılabilir.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sınırları</h2>
+    <ul class="kurallar">
+      <li>Veri sentetik. Modelin uyumu bu yüzden çok yüksek (R² = 0,995); gerçek ölçümle düşecektir.</li>
+      <li>Dikiz aynası sayıları tamamen varsayım; aynaya özel süre kaynağı bulunamadı.</li>
+      <li>Makine işlemleri uzun ve operatör sayısı fazlaysa, regresyon darboğazı ancak yaklaşık yakalar.</li>
+      <li>Gerçek veri birkaç farklı ürün ailesinden toplanmalı. Benzer bir çalışma, ürün çeşitliliğinin tahmin
+        doğruluğu için kritik olduğunu gösteriyor.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Başlıca kaynaklar</h2>
+    <ol class="kaynak">
+      <li>Chang, G., Peterson, W. (2010). Design for Assembly in Manufacturing Engineering Technology Program. ASEE (Boothroyd-Dewhurst DFA tabloları).</li>
+      <li>Sprovieri, J. (2022). What's New With Hot-Plate Welding. ASSEMBLY Magazine.</li>
+      <li>Sprovieri, J. (2009). Leak Testing Auto Parts. ASSEMBLY Magazine.</li>
+      <li>Triki, H. vd. (2015). An Assembly Line Balancing Problem Automotive Cables. MPER 6(1). DOI: 10.1515/mper-2015-0008</li>
+      <li>Hamzadayı, A. (2022). Benders Decomposition Algorithm for SALBP-II with Zoning Restrictions. YYÜ FBE Dergisi 27(2). DOI: 10.53433/yyufbed.1080238</li>
+      <li>MTM ASSOCIATION e. V. The brands of the MTM ASSOCIATION. <a href="https://mtm.org/en/brands/our-brands">mtm.org</a></li>
+      <li>Owensby, J. E., Summers, J. D. (2014). Assembly Time Estimation. J. Comput. Inf. Sci. Eng. 14(1).</li>
+    </ol>
+    <p><small>Tam kaynakça ve her değerin kaynağı: depodaki <span class="sayi">outputs/genel/rapor.md</span> ve <span class="sayi">data/genel_parametreler.xlsx</span>.</small></p>
+  </section>
+
+  <footer>Bitirme projesi demosu. Firma, müşteri ve gerçek parça bilgisi içermez.</footer>
+</main>
+</body>
+</html>
