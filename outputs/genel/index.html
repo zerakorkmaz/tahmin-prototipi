@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Montaj Çevrim Tahmini</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root{--iz:#e3e8ee;--vurgu-koyu:#1b3a5c;--bg:#f5f7fa;--kart:#fff;--yazi:#1d2733;--soluk:#5b6775;--vurgu:#2f5d8a;--cizgi:#d9e0e8;--uyari:#9a5b00;--uyari-bg:#fff4e0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--iz:#26313c;--vurgu-koyu:#b9d6f2;--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10;color-scheme:dark}}
+:root[data-theme="dark"]{--iz:#26313c;--vurgu-koyu:#b9d6f2;--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--yazi);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:1.25rem;margin:4px 0 2px}
+.demo{display:inline-block;font-size:.78rem;color:var(--uyari);background:var(--uyari-bg);border-radius:6px;padding:2px 8px;margin-bottom:12px}
+.kart{background:var(--kart);border:1px solid var(--cizgi);border-radius:12px;padding:16px;margin-bottom:14px}
+.sonuc{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:center}
+.sonuc .deger{font-size:2rem;font-weight:700;color:var(--vurgu);font-variant-numeric:tabular-nums}
+.sonuc .etiket{font-size:.85rem;color:var(--soluk)}
+.alan{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cizgi)}
+.alan:last-child{border-bottom:0}
+.alan label{font-size:.95rem}
+.alan small{color:var(--soluk)}
+input[type=number]{width:100%;padding:8px;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);text-align:right}
+input.disarida{border-color:var(--uyari);outline:2px solid var(--uyari)}
+.op{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;grid-column:1/-1}
+.op button{padding:10px 0;font-size:1rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);cursor:pointer}
+.op button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:var(--kart)}
+.uyari{display:none;color:var(--uyari);background:var(--uyari-bg);border-radius:8px;padding:10px;font-size:.9rem;margin-bottom:14px}
+details{font-size:.85rem;color:var(--soluk)}
+h2{font-size:1rem;margin:0 0 4px}
+.not{font-size:.8rem;color:var(--soluk);margin:0 0 12px}
+.ist{margin:10px 0 14px}
+.ist .ust{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-size:.9rem;margin-bottom:4px}
+.ist .ust>span{white-space:nowrap}
+.ist .ust b{font-variant-numeric:tabular-nums}
+.ist .iz{position:relative;height:14px;background:var(--iz);border-radius:4px;overflow:hidden}
+.ist .dolu{position:absolute;left:0;top:0;bottom:0;background:var(--vurgu);border-radius:4px}
+.ist.darbogaz .dolu{background:var(--vurgu-koyu)}
+.ist .isler{font-size:.78rem;color:var(--soluk);margin-top:4px}
+.rozet{font-size:.72rem;border:1px solid var(--cizgi);border-radius:5px;padding:0 5px;margin-left:6px;color:var(--yazi)}
+.ozet{font-size:.85rem;border-top:1px solid var(--cizgi);padding-top:10px;margin-top:4px}
+code{font-size:.8rem;word-break:break-word}
+
+.sablon{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.sablon button{padding:8px 12px;font-size:.92rem;border:1px solid var(--cizgi);border-radius:8px;background:var(--bg);color:var(--yazi);cursor:pointer}
+.sablon button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:var(--kart)}
+.alan small.acik{display:block;font-size:.75rem}
+.grup{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--soluk);margin:14px 0 2px}
+.grup:first-child{margin-top:0}
+button:focus-visible,input:focus-visible{outline:2px solid var(--vurgu);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<h1>Montaj hattı – çevrim süresi tahmini (genel sürüm)</h1>
+<div class="demo">Demo – sentetik veriyle eğitilmiştir</div>
+
+<div class="kart sonuc" aria-live="polite">
+  <div><div class="deger" id="sure">–</div><div class="etiket">Tahmini çevrim süresi (sn)</div></div>
+  <div><div class="deger" id="adet">–</div><div class="etiket">Saatlik üretim (adet)</div></div>
+</div>
+<div class="uyari" id="uyari"></div>
+
+<div class="kart">
+  <h2>Ürün şablonu</h2>
+  <p class="not">Şablon seçince işlem sayıları dolar (operatör sayısı değişmez); sonra istediğiniz kadar değiştirebilirsiniz.</p>
+  <div class="sablon" id="sablonlar"></div>
+</div>
+
+<div class="kart" id="girdiler"></div>
+
+<div class="kart" id="operatorler">
+  <h2>Operatörlerin çalışma süreleri</h2>
+  <p class="not">Bir çevrimde her operatörün çalıştığı (çubuğun dolu kısmı) ve beklediği (boş kısım) süre.
+  İşlem tipi süreleri, iş sırası ve bölünemeyen bağlı işlere göre hesaplanır; makine süreleri operatöre bölünmez.
+  Regresyon tahmininden birkaç saniye farklı olabilir.</p>
+  <div id="istasyonlar"></div>
+  <div class="ozet" id="hatozet"></div>
+</div>
+
+<details class="kart">
+  <summary>Model denklemi</summary>
+  <p><code id="denklem"></code></p>
+  <p id="bilgi"></p>
+</details>
+</main>
+<script>
+const MODEL = {"aciklama": "Genel sürüm – sentetik veriyle eğitilmiş çevrim süresi modeli (sn). tahmin = sabit + Σ katsayı × terim", "sabit": -5.65686059333667, "terimler": [{"ad": "1/operator", "degisken": "operator", "donusum": "ters", "katsayi": 22.43865731100704}, {"ad": "maks_makine", "degisken": "makine1_sn,makine2_sn", "donusum": "maks", "katsayi": 0.12137475503782708}, {"ad": "vida/operator", "degisken": "vida", "donusum": "bolu_n", "katsayi": 9.86381300469992}, {"ad": "baglanti/operator", "degisken": "baglanti", "donusum": "bolu_n", "katsayi": 8.5729361133656}, {"ad": "gecme/operator", "degisken": "gecme", "donusum": "bolu_n", "katsayi": 3.890992301313395}, {"ad": "parca_zor/operator", "degisken": "parca_zor", "donusum": "bolu_n", "katsayi": 8.687216628155511}, {"ad": "makine1_sn/operator", "degisken": "makine1_sn", "donusum": "bolu_n", "katsayi": 0.9207150628243131}, {"ad": "makine2_sn/operator", "degisken": "makine2_sn", "donusum": "bolu_n", "katsayi": 0.8273776344021803}, {"ad": "parca_kolay/operator", "degisken": "parca_kolay", "donusum": "bolu_n", "katsayi": 3.0969968151856087}, {"ad": "kontrol/operator", "degisken": "kontrol", "donusum": "bolu_n", "katsayi": 1.9033218414088084}, {"ad": "govde_kg/operator", "degisken": "govde_kg", "donusum": "bolu_n", "katsayi": 7.262494758090575}, {"ad": "operator", "degisken": "operator", "donusum": "x", "katsayi": 3.4272069856560736}, {"ad": "gecme", "degisken": "gecme", "donusum": "x", "katsayi": -0.46401751240660793}, {"ad": "baglanti", "degisken": "baglanti", "donusum": "x", "katsayi": -0.7177119295584031}, {"ad": "makine2_sn", "degisken": "makine2_sn", "donusum": "x", "katsayi": 0.06641504479953021}, {"ad": "govde_kg", "degisken": "govde_kg", "donusum": "x", "katsayi": -1.7064899208843811}], "girdiler": [{"ad": "govde_kg", "etiket": "Ana gövde kütlesi", "birim": "kg", "min": 0.2, "max": 2.0, "tamsayi": false, "aciklama": "Taşıma/yükleme süresini belirler", "varsayilan": 0.6, "adim": 0.1}, {"ad": "parca_kolay", "etiket": "Kolay parça yerleştirme", "birim": "adet", "min": 0, "max": 6, "tamsayi": true, "aciklama": "Küçük, simetrik, kendiliğinden hizalanan", "varsayilan": 2, "adim": 1}, {"ad": "parca_zor", "etiket": "Zor parça yerleştirme", "birim": "adet", "min": 0, "max": 4, "tamsayi": true, "aciklama": "Hizalama isteyen, bastırılarak/tutularak takılan", "varsayilan": 1, "adim": 1}, {"ad": "vida", "etiket": "Vidalama", "birim": "adet", "min": 0, "max": 8, "tamsayi": true, "aciklama": "Her vida ayrı sayılır", "varsayilan": 2, "adim": 1}, {"ad": "gecme", "etiket": "Geçmeli bağlantı", "birim": "adet", "min": 0, "max": 10, "tamsayi": true, "aciklama": "Klips, snap-fit", "varsayilan": 4, "adim": 1}, {"ad": "baglanti", "etiket": "Esnek bağlantı", "birim": "adet", "min": 0, "max": 5, "tamsayi": true, "aciklama": "Hortum, kablo, konnektör", "varsayilan": 2, "adim": 1}, {"ad": "kontrol", "etiket": "Görsel kontrol noktası", "birim": "adet", "min": 0, "max": 5, "tamsayi": true, "aciklama": "Ayrı bir bakış/kontrol işlemi", "varsayilan": 2, "adim": 1}, {"ad": "makine1_sn", "etiket": "Makine işlemi 1", "birim": "sn", "min": 0, "max": 60, "tamsayi": false, "aciklama": "Kaynak, pres vb. (yoksa 0) – operatöre bölünmez", "varsayilan": 30, "adim": 1}, {"ad": "makine2_sn", "etiket": "Makine işlemi 2", "birim": "sn", "min": 0, "max": 60, "tamsayi": false, "aciklama": "Sızdırmazlık / fonksiyon testi (yoksa 0) – bölünmez", "varsayilan": 25, "adim": 1}, {"ad": "operator", "etiket": "Operatör sayısı", "birim": "kişi", "min": 1, "max": 4, "tamsayi": true, "aciklama": "", "varsayilan": 2, "adim": 1}], "sablonlar": {"Washer tank": {"govde_kg": 0.6, "parca_kolay": 2, "parca_zor": 1, "vida": 2, "gecme": 4, "baglanti": 2, "kontrol": 2, "makine1_sn": 30, "makine2_sn": 25}, "Dış dikiz aynası": {"govde_kg": 0.9, "parca_kolay": 3, "parca_zor": 2, "vida": 4, "gecme": 6, "baglanti": 2, "kontrol": 3, "makine1_sn": 0, "makine2_sn": 15}}, "r2": 0.9951756849492288, "duzeltilmis_r2": 0.9949741469836614, "n_gozlem": 400, "hat": {"element_sn": {"sabit_is": 15, "tasima_sabit": 2.0, "tasima_per_kg": 1.5, "parca_kolay": 3.0, "parca_zor": 8.5, "vida": 9.8, "gecme": 3.5, "baglanti": 8.0, "kontrol": 2.0, "zor_parca_vida": 2}}};
+const E = MODEL.hat.element_sn;
+
+function terim(t, v) {
+  const n = v.operator;
+  if (t.donusum === "x") return v[t.degisken];
+  if (t.donusum === "ters") return 1 / n;
+  if (t.donusum === "bolu_n") return v[t.degisken] / n;
+  if (t.donusum === "maks") { const [a, b] = t.degisken.split(","); return Math.max(v[a], v[b]); }
+  throw new Error(t.donusum);
+}
+function tahmin(v) { let y = MODEL.sabit; for (const t of MODEL.terimler) y += t.katsayi * terim(t, v); return y; }
+window.tahmin = tahmin;
+
+function isBloklari(d) {
+  const h = E.tasima_sabit + E.tasima_per_kg * d.govde_kg, b = [];
+  b.push([d.makine1_sn > 0 ? "Yükleme+Makine1" : "Gövde yükleme", h + d.makine1_sn]);
+  let kalan = d.vida;
+  for (let i = 0; i < d.parca_zor; i++) {
+    const v = Math.min(E.zor_parca_vida, kalan); kalan -= v;
+    b.push([`ZorParça${i + 1}` + (v ? `+${v}vida` : ""), E.parca_zor + v * E.vida]);
+  }
+  for (let i = 0; i < d.parca_kolay; i++) b.push([`KolayParça${i + 1}`, E.parca_kolay]);
+  for (let i = 0; i < d.gecme; i++) b.push([`Geçme${i + 1}`, E.gecme]);
+  for (let i = 0; i < kalan; i++) b.push([`Vida${i + 1}`, E.vida]);
+  for (let i = 0; i < d.baglanti; i++) b.push([`Bağlantı${i + 1}`, E.baglanti]);
+  for (let i = 0; i < d.kontrol; i++) b.push([`Kontrol${i + 1}`, E.kontrol]);
+  b.push([d.makine2_sn > 0 ? "Yükleme+Makine2" : "Ara taşıma", h + d.makine2_sn]);
+  b.push(["Etiket+kutulama", h + E.sabit_is]);
+  return b;
+}
+function hatDengele(bl, nOp) {
+  const k = bl.length, n = Math.min(nOp, k), on = [0];
+  for (const [, t] of bl) on.push(on[on.length - 1] + t);
+  const dp = [], kes = [];
+  for (let s = 0; s <= n; s++) { dp.push(new Array(k + 1).fill(Infinity)); kes.push(new Array(k + 1).fill(0)); }
+  dp[0][0] = 0;
+  for (let s = 1; s <= n; s++) for (let i = 1; i <= k; i++) for (let j = s - 1; j < i; j++) {
+    const v = Math.max(dp[s - 1][j], on[i] - on[j]);
+    if (v < dp[s][i]) { dp[s][i] = v; kes[s][i] = j; }
+  }
+  const ist = []; let i = k;
+  for (let s = n; s >= 1; s--) { const j = kes[s][i]; ist.unshift({ yuk: on[i] - on[j], isler: bl.slice(j, i).map(x => x[0]) }); i = j; }
+  while (ist.length < nOp) ist.push({ yuk: 0, isler: [] });
+  return { cevrim: dp[n][k], ist, toplam: on[k] };
+}
+
+const deger = {}, GRUP = { govde_kg: "Ürün", parca_kolay: "Elle işlemler (operatörler paylaşabilir)",
+  makine1_sn: "Makine işlemleri (bölünmez)", operator: "Hat" };
+const kutu = document.getElementById("girdiler");
+for (const g of MODEL.girdiler) {
+  deger[g.ad] = g.varsayilan;
+  if (GRUP[g.ad]) { const h = document.createElement("div"); h.className = "grup"; h.textContent = GRUP[g.ad]; kutu.appendChild(h); }
+  const d = document.createElement("div");
+  d.className = "alan";
+  if (g.ad === "operator") {
+    d.innerHTML = `<label>${g.etiket} <small>(${g.min}–${g.max})</small></label><div></div>`;
+    const op = document.createElement("div"); op.className = "op";
+    for (let i = g.min; i <= g.max; i++) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = i; b.dataset.n = i;
+      b.onclick = () => { deger.operator = i; hesapla(); };
+      op.appendChild(b);
+    }
+    d.appendChild(op);
+  } else {
+    d.innerHTML = `<label for="in_${g.ad}">${g.etiket} <small>(${g.birim}, ${g.min}–${g.max})</small>
+      <small class="acik">${g.aciklama}</small></label>
+      <input type="number" id="in_${g.ad}" inputmode="decimal" step="${g.adim}" value="${g.varsayilan}">`;
+    d.querySelector("input").addEventListener("input", e => {
+      deger[g.ad] = e.target.value === "" ? NaN : Number(e.target.value); sablonSec(null); hesapla();
+    });
+  }
+  kutu.appendChild(d);
+}
+const sabKutu = document.getElementById("sablonlar");
+for (const ad of [...Object.keys(MODEL.sablonlar), "Özel"]) {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = ad; b.dataset.ad = ad;
+  b.onclick = () => {
+    if (ad !== "Özel") {
+      Object.assign(deger, MODEL.sablonlar[ad]);
+      for (const g of MODEL.girdiler) { const el = document.getElementById("in_" + g.ad); if (el) el.value = deger[g.ad]; }
+    }
+    sablonSec(ad); hesapla();
+  };
+  sabKutu.appendChild(b);
+}
+function sablonSec(ad) {
+  if (ad === null) ad = Object.keys(MODEL.sablonlar).find(s => Object.keys(MODEL.sablonlar[s]).every(k => MODEL.sablonlar[s][k] === deger[k])) || "Özel";
+  sabKutu.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.ad === ad));
+}
+
+function ciz(v) {
+  const kI = document.getElementById("istasyonlar"), oz = document.getElementById("hatozet");
+  if (!MODEL.girdiler.every(g => Number.isFinite(v[g.ad]) && v[g.ad] >= 0) || v.operator < 1) {
+    kI.innerHTML = ""; oz.textContent = "Tüm girdileri doldurun."; return;
+  }
+  const d = Object.assign({}, v);
+  for (const g of MODEL.girdiler) if (g.tamsayi) d[g.ad] = Math.round(d[g.ad]);
+  const h = hatDengele(isBloklari(d), d.operator);
+  kI.innerHTML = "";
+  h.ist.forEach((s, i) => {
+    const dar = Math.abs(s.yuk - h.cevrim) < 1e-9, bekle = h.cevrim - s.yuk;
+    const el = document.createElement("div");
+    el.className = "ist" + (dar ? " darbogaz" : ""); el.dataset.yuk = s.yuk;
+    el.innerHTML = `<div class="ust"><span>Operatör ${i + 1}${dar ? '<span class="rozet">darboğaz</span>' : ""}</span>
+      <span><b>${s.yuk.toFixed(1)} sn</b> çalışma · ${bekle.toFixed(1)} sn bekleme</span></div>
+      <div class="iz" role="img" aria-label="Operatör ${i + 1}: ${s.yuk.toFixed(1)} sn çalışma, ${bekle.toFixed(1)} sn bekleme">
+      <div class="dolu" style="width:${(100 * s.yuk / h.cevrim).toFixed(2)}%"></div></div>
+      <div class="isler">${s.isler.length ? s.isler.join(" → ") : "iş atanmadı"}</div>`;
+    el.title = `Operatör ${i + 1}: %${(100 * s.yuk / h.cevrim).toFixed(0)} doluluk`;
+    kI.appendChild(el);
+  });
+  oz.innerHTML = `Toplam iş içeriği <b>${h.toplam.toFixed(1)} sn</b> · en yüklü operatör (hesaplanan çevrim) ` +
+    `<b>${h.cevrim.toFixed(1)} sn</b> · denge kaybı <b>%${(100 * (d.operator * h.cevrim / h.toplam - 1)).toFixed(1)}</b>`;
+}
+
+function hesapla() {
+  document.querySelectorAll(".op button").forEach(b => b.setAttribute("aria-pressed", Number(b.dataset.n) === deger.operator));
+  const dis = [];
+  for (const g of MODEL.girdiler) {
+    const v = deger[g.ad], kotu = !Number.isFinite(v) || v < g.min || v > g.max;
+    const inp = document.getElementById("in_" + g.ad); if (inp) inp.classList.toggle("disarida", kotu);
+    if (kotu) dis.push(`${g.etiket} (${g.min}–${g.max} ${g.birim})`);
+  }
+  const u = document.getElementById("uyari");
+  u.style.display = dis.length ? "block" : "none";
+  u.textContent = dis.length ? "Uyarı: model bu aralıkta eğitilmedi → " + dis.join(", ") : "";
+  const s = MODEL.girdiler.every(g => Number.isFinite(deger[g.ad])) ? tahmin(deger) : NaN;
+  const sEl = document.getElementById("sure");
+  sEl.dataset.ham = s;
+  sEl.textContent = Number.isFinite(s) ? s.toFixed(1) : "–";
+  document.getElementById("adet").textContent = Number.isFinite(s) && s > 0 ? (3600 / s).toFixed(1) : "–";
+  ciz(deger);
+}
+document.getElementById("denklem").textContent = "çevrim_sn = " + MODEL.sabit.toFixed(3) + " " +
+  MODEL.terimler.map(t => (t.katsayi >= 0 ? "+ " : "− ") + Math.abs(t.katsayi).toFixed(3) + "·" + t.ad).join(" ");
+document.getElementById("bilgi").textContent =
+  `R² = ${MODEL.r2.toFixed(4)}, düzeltilmiş R² = ${MODEL.duzeltilmis_r2.toFixed(4)}, ${MODEL.n_gozlem} sentetik gözlem.`;
+sablonSec(null);
+hesapla();
+</script>
+</body>
+</html>

@@ -31,3 +31,9 @@
 4. Arayüz → `outputs/index.html` (tek dosya, sunucusuz, internetsiz, mobil uyumlu;
    model.json gömülü). Script sonunda Python ve HTML tahminleri karşılaştırılır.
 5. Senaryo analizi yapılmaz (operatör sayısı arayüzde değiştirilir).
+
+## Genel sürüm (`src/genel_demo.py`)
+- Ürün, genel işlem tipleriyle tarif edilir (MTM-UAS / DFA seviyesi): kolay/zor parça,
+  vida, geçme, esnek bağlantı, kontrol; makine işlemleri saniye olarak ve operatöre bölünmez.
+- Ürün şablonları (washer tank, dış dikiz aynası) yalnızca bu sayıları doldurur.
+- Çıktılar: `data/genel_parametreler.xlsx`, `outputs/genel/`.

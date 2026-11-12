@@ -1,0 +1,255 @@
+{
+  "aciklama": "Genel sürüm – sentetik veriyle eğitilmiş çevrim süresi modeli (sn). tahmin = sabit + Σ katsayı × terim",
+  "sabit": -5.65686059333667,
+  "terimler": [
+    {
+      "ad": "1/operator",
+      "degisken": "operator",
+      "donusum": "ters",
+      "katsayi": 22.43865731100704
+    },
+    {
+      "ad": "maks_makine",
+      "degisken": "makine1_sn,makine2_sn",
+      "donusum": "maks",
+      "katsayi": 0.12137475503782708
+    },
+    {
+      "ad": "vida/operator",
+      "degisken": "vida",
+      "donusum": "bolu_n",
+      "katsayi": 9.86381300469992
+    },
+    {
+      "ad": "baglanti/operator",
+      "degisken": "baglanti",
+      "donusum": "bolu_n",
+      "katsayi": 8.5729361133656
+    },
+    {
+      "ad": "gecme/operator",
+      "degisken": "gecme",
+      "donusum": "bolu_n",
+      "katsayi": 3.890992301313395
+    },
+    {
+      "ad": "parca_zor/operator",
+      "degisken": "parca_zor",
+      "donusum": "bolu_n",
+      "katsayi": 8.687216628155511
+    },
+    {
+      "ad": "makine1_sn/operator",
+      "degisken": "makine1_sn",
+      "donusum": "bolu_n",
+      "katsayi": 0.9207150628243131
+    },
+    {
+      "ad": "makine2_sn/operator",
+      "degisken": "makine2_sn",
+      "donusum": "bolu_n",
+      "katsayi": 0.8273776344021803
+    },
+    {
+      "ad": "parca_kolay/operator",
+      "degisken": "parca_kolay",
+      "donusum": "bolu_n",
+      "katsayi": 3.0969968151856087
+    },
+    {
+      "ad": "kontrol/operator",
+      "degisken": "kontrol",
+      "donusum": "bolu_n",
+      "katsayi": 1.9033218414088084
+    },
+    {
+      "ad": "govde_kg/operator",
+      "degisken": "govde_kg",
+      "donusum": "bolu_n",
+      "katsayi": 7.262494758090575
+    },
+    {
+      "ad": "operator",
+      "degisken": "operator",
+      "donusum": "x",
+      "katsayi": 3.4272069856560736
+    },
+    {
+      "ad": "gecme",
+      "degisken": "gecme",
+      "donusum": "x",
+      "katsayi": -0.46401751240660793
+    },
+    {
+      "ad": "baglanti",
+      "degisken": "baglanti",
+      "donusum": "x",
+      "katsayi": -0.7177119295584031
+    },
+    {
+      "ad": "makine2_sn",
+      "degisken": "makine2_sn",
+      "donusum": "x",
+      "katsayi": 0.06641504479953021
+    },
+    {
+      "ad": "govde_kg",
+      "degisken": "govde_kg",
+      "donusum": "x",
+      "katsayi": -1.7064899208843811
+    }
+  ],
+  "girdiler": [
+    {
+      "ad": "govde_kg",
+      "etiket": "Ana gövde kütlesi",
+      "birim": "kg",
+      "min": 0.2,
+      "max": 2.0,
+      "tamsayi": false,
+      "aciklama": "Taşıma/yükleme süresini belirler",
+      "varsayilan": 0.6,
+      "adim": 0.1
+    },
+    {
+      "ad": "parca_kolay",
+      "etiket": "Kolay parça yerleştirme",
+      "birim": "adet",
+      "min": 0,
+      "max": 6,
+      "tamsayi": true,
+      "aciklama": "Küçük, simetrik, kendiliğinden hizalanan",
+      "varsayilan": 2,
+      "adim": 1
+    },
+    {
+      "ad": "parca_zor",
+      "etiket": "Zor parça yerleştirme",
+      "birim": "adet",
+      "min": 0,
+      "max": 4,
+      "tamsayi": true,
+      "aciklama": "Hizalama isteyen, bastırılarak/tutularak takılan",
+      "varsayilan": 1,
+      "adim": 1
+    },
+    {
+      "ad": "vida",
+      "etiket": "Vidalama",
+      "birim": "adet",
+      "min": 0,
+      "max": 8,
+      "tamsayi": true,
+      "aciklama": "Her vida ayrı sayılır",
+      "varsayilan": 2,
+      "adim": 1
+    },
+    {
+      "ad": "gecme",
+      "etiket": "Geçmeli bağlantı",
+      "birim": "adet",
+      "min": 0,
+      "max": 10,
+      "tamsayi": true,
+      "aciklama": "Klips, snap-fit",
+      "varsayilan": 4,
+      "adim": 1
+    },
+    {
+      "ad": "baglanti",
+      "etiket": "Esnek bağlantı",
+      "birim": "adet",
+      "min": 0,
+      "max": 5,
+      "tamsayi": true,
+      "aciklama": "Hortum, kablo, konnektör",
+      "varsayilan": 2,
+      "adim": 1
+    },
+    {
+      "ad": "kontrol",
+      "etiket": "Görsel kontrol noktası",
+      "birim": "adet",
+      "min": 0,
+      "max": 5,
+      "tamsayi": true,
+      "aciklama": "Ayrı bir bakış/kontrol işlemi",
+      "varsayilan": 2,
+      "adim": 1
+    },
+    {
+      "ad": "makine1_sn",
+      "etiket": "Makine işlemi 1",
+      "birim": "sn",
+      "min": 0,
+      "max": 60,
+      "tamsayi": false,
+      "aciklama": "Kaynak, pres vb. (yoksa 0) – operatöre bölünmez",
+      "varsayilan": 30,
+      "adim": 1
+    },
+    {
+      "ad": "makine2_sn",
+      "etiket": "Makine işlemi 2",
+      "birim": "sn",
+      "min": 0,
+      "max": 60,
+      "tamsayi": false,
+      "aciklama": "Sızdırmazlık / fonksiyon testi (yoksa 0) – bölünmez",
+      "varsayilan": 25,
+      "adim": 1
+    },
+    {
+      "ad": "operator",
+      "etiket": "Operatör sayısı",
+      "birim": "kişi",
+      "min": 1,
+      "max": 4,
+      "tamsayi": true,
+      "aciklama": "",
+      "varsayilan": 2,
+      "adim": 1
+    }
+  ],
+  "sablonlar": {
+    "Washer tank": {
+      "govde_kg": 0.6,
+      "parca_kolay": 2,
+      "parca_zor": 1,
+      "vida": 2,
+      "gecme": 4,
+      "baglanti": 2,
+      "kontrol": 2,
+      "makine1_sn": 30,
+      "makine2_sn": 25
+    },
+    "Dış dikiz aynası": {
+      "govde_kg": 0.9,
+      "parca_kolay": 3,
+      "parca_zor": 2,
+      "vida": 4,
+      "gecme": 6,
+      "baglanti": 2,
+      "kontrol": 3,
+      "makine1_sn": 0,
+      "makine2_sn": 15
+    }
+  },
+  "r2": 0.9951756849492288,
+  "duzeltilmis_r2": 0.9949741469836614,
+  "n_gozlem": 400,
+  "hat": {
+    "element_sn": {
+      "sabit_is": 15,
+      "tasima_sabit": 2.0,
+      "tasima_per_kg": 1.5,
+      "parca_kolay": 3.0,
+      "parca_zor": 8.5,
+      "vida": 9.8,
+      "gecme": 3.5,
+      "baglanti": 8.0,
+      "kontrol": 2.0,
+      "zor_parca_vida": 2
+    }
+  }
+}
