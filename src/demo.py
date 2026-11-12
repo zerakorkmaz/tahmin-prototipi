@@ -445,6 +445,13 @@ def model_json_olustur(final, secilen, adaylar):
                        katsayi=float(final.params[ad])) for ad in secilen],
         girdiler=girdiler,
         r2=float(final.rsquared), duzeltilmis_r2=float(final.rsquared_adj), n_gozlem=int(final.nobs),
+        hat=dict(
+            aciklama="Operatör iş dağılımı: regresyon değil; literatür/VARSAYIM element süreleri, öncelik "
+                     "sırası ve bağlı iş kısıtıyla optimum dengeleme.",
+            element_sn={k: v[1] for k, v in ELEMENTLER.items() if isinstance(v[1], (int, float))},
+            vida_per_braket=ELEMENTLER["vida_per_braket"][1],
+            varsayilan={k: v[4] for k, v in GIRDILER.items()},
+        ),
     )
 
 
@@ -553,8 +560,8 @@ HTML_SABLON = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Çevrim Süresi Tahmini</title>
 <style>
-:root{--bg:#f5f7fa;--kart:#fff;--yazi:#1d2733;--soluk:#5b6775;--vurgu:#2f5d8a;--cizgi:#d9e0e8;--uyari:#9a5b00;--uyari-bg:#fff4e0}
-@media (prefers-color-scheme:dark){:root{--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10}}
+:root{--iz:#e3e8ee;--vurgu-koyu:#1b3a5c;--bg:#f5f7fa;--kart:#fff;--yazi:#1d2733;--soluk:#5b6775;--vurgu:#2f5d8a;--cizgi:#d9e0e8;--uyari:#9a5b00;--uyari-bg:#fff4e0}
+@media (prefers-color-scheme:dark){:root{--iz:#26313c;--vurgu-koyu:#b9d6f2;--bg:#121820;--kart:#1b232d;--yazi:#e6ebf1;--soluk:#9aa6b4;--vurgu:#7fb0e0;--cizgi:#2c3742;--uyari:#ffc56b;--uyari-bg:#3a2a10}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--yazi);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:640px;margin:0 auto;padding:16px}
@@ -575,6 +582,18 @@ input.disarida{border-color:var(--uyari);outline:2px solid var(--uyari)}
 .op button[aria-pressed=true]{background:var(--vurgu);border-color:var(--vurgu);color:#fff}
 .uyari{display:none;color:var(--uyari);background:var(--uyari-bg);border-radius:8px;padding:10px;font-size:.9rem;margin-bottom:14px}
 details{font-size:.85rem;color:var(--soluk)}
+h2{font-size:1rem;margin:0 0 4px}
+.not{font-size:.8rem;color:var(--soluk);margin:0 0 12px}
+.ist{margin:10px 0 14px}
+.ist .ust{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-size:.9rem;margin-bottom:4px}
+.ist .ust>span{white-space:nowrap}
+.ist .ust b{font-variant-numeric:tabular-nums}
+.ist .iz{position:relative;height:14px;background:var(--iz);border-radius:4px;overflow:hidden}
+.ist .dolu{position:absolute;left:0;top:0;bottom:0;background:var(--vurgu);border-radius:4px}
+.ist.darbogaz .dolu{background:var(--vurgu-koyu)}
+.ist .isler{font-size:.78rem;color:var(--soluk);margin-top:4px}
+.rozet{font-size:.72rem;border:1px solid var(--cizgi);border-radius:5px;padding:0 5px;margin-left:6px;color:var(--yazi)}
+.ozet{font-size:.85rem;border-top:1px solid var(--cizgi);padding-top:10px;margin-top:4px}
 code{font-size:.8rem;word-break:break-word}
 </style>
 </head>
@@ -590,6 +609,14 @@ code{font-size:.8rem;word-break:break-word}
 <div class="uyari" id="uyari"></div>
 
 <div class="kart" id="girdiler"></div>
+
+<div class="kart" id="operatorler">
+  <h2>Operatörlerin çalışma süreleri</h2>
+  <p class="not">Bir çevrimde her operatörün çalıştığı (çubuğun dolu kısmı) ve beklediği (boş kısım) süre. Literatür element
+  süreleri, iş sırası ve bölünemeyen bağlı işlere göre hesaplanır; regresyon tahmininden birkaç saniye farklı olabilir.</p>
+  <div id="istasyonlar"></div>
+  <div class="ozet" id="hatozet"></div>
+</div>
 
 <details class="kart">
   <summary>Model denklemi</summary>
@@ -613,6 +640,68 @@ function tahmin(v) {
   return y;
 }
 window.tahmin = tahmin;
+
+// ---- Operatör iş dağılımı (Python'daki is_bloklari ve hat_dengele ile aynı) ----
+const HAT = MODEL.hat, E = HAT.element_sn;
+function isBloklari(v) {
+  const tl = E.tasima_per_l * v.hacim_l, b = [];
+  b.push(["Yükleme+kaynak", 0.5 * tl + E.kaynak_sabit + E.kaynak_per_m * v.kaynak_m]);
+  const ph = Math.min(v.pompa, v.hortum);
+  for (let i = 0; i < v.pompa; i++) b.push([`Pompa${i + 1}` + (i < ph ? "+hortum" : ""), E.pompa + (i < ph ? E.hortum : 0)]);
+  for (let i = 0; i < v.sensor; i++) b.push([`Sensör${i + 1}`, E.sensor]);
+  for (let i = 0; i < v.hortum - ph; i++) b.push([`Hortum${i + 1}`, E.hortum]);
+  let kalan = v.vida, j = 0;
+  while (kalan > 0) { const k = Math.min(HAT.vida_per_braket, kalan); j++; b.push([`Braket${j}(${k} vida)`, E.vida * k]); kalan -= k; }
+  for (let i = 0; i < v.klips; i++) b.push([`Klips${i + 1}`, E.klips]);
+  b.push(["Yükleme+test", 0.25 * tl + E.sizdirmazlik]);
+  b.push(["Etiket+kutulama", 0.25 * tl + E.sabit_is]);
+  return b;
+}
+function hatDengele(bloklar, nOp) {
+  const k = bloklar.length, n = Math.min(nOp, k), on = [0];
+  for (const [, t] of bloklar) on.push(on[on.length - 1] + t);
+  const dp = [], kes = [];
+  for (let s = 0; s <= n; s++) { dp.push(new Array(k + 1).fill(Infinity)); kes.push(new Array(k + 1).fill(0)); }
+  dp[0][0] = 0;
+  for (let s = 1; s <= n; s++) for (let i = 1; i <= k; i++) for (let j = s - 1; j < i; j++) {
+    const v = Math.max(dp[s - 1][j], on[i] - on[j]);
+    if (v < dp[s][i]) { dp[s][i] = v; kes[s][i] = j; }
+  }
+  const ist = []; let i = k;
+  for (let s = n; s >= 1; s--) { const j = kes[s][i]; ist.unshift({ yuk: on[i] - on[j], isler: bloklar.slice(j, i).map(x => x[0]) }); i = j; }
+  while (ist.length < nOp) ist.push({ yuk: 0, isler: [] });
+  return { cevrim: dp[n][k], ist, toplam: on[k] };
+}
+window.hatHesapla = v => hatDengele(isBloklari(Object.assign({}, HAT.varsayilan, v)), v.operator);
+
+function ciz(v) {
+  const kutuI = document.getElementById("istasyonlar"), oz = document.getElementById("hatozet");
+  const tamam = ["hacim_l", "kaynak_m", "vida", "klips", "hortum", "pompa", "sensor", "operator"]
+    .every(k => Number.isFinite((k in v ? v : HAT.varsayilan)[k]) && (k in v ? v : HAT.varsayilan)[k] >= 0);
+  if (!tamam) { kutuI.innerHTML = ""; oz.textContent = "Tüm girdileri doldurun."; return; }
+  const vv = Object.assign({}, HAT.varsayilan, v);
+  vv.vida = Math.round(vv.vida); vv.klips = Math.round(vv.klips); vv.hortum = Math.round(vv.hortum);
+  vv.pompa = Math.round(vv.pompa); vv.sensor = Math.round(vv.sensor);
+  const h = hatDengele(isBloklari(vv), vv.operator);
+  kutuI.innerHTML = "";
+  h.ist.forEach((s, i) => {
+    const dar = Math.abs(s.yuk - h.cevrim) < 1e-9;
+    const d = document.createElement("div");
+    d.className = "ist" + (dar ? " darbogaz" : "");
+    d.dataset.yuk = s.yuk;
+    const bekle = h.cevrim - s.yuk;
+    d.innerHTML = `<div class="ust"><span>Operatör ${i + 1}${dar ? '<span class="rozet">darboğaz</span>' : ""}</span>
+      <span><b>${s.yuk.toFixed(1)} sn</b> çalışma · ${bekle.toFixed(1)} sn bekleme</span></div>
+      <div class="iz" role="img" aria-label="Operatör ${i + 1}: ${s.yuk.toFixed(1)} sn çalışma, ${bekle.toFixed(1)} sn bekleme">
+      <div class="dolu" style="width:${(100 * s.yuk / h.cevrim).toFixed(2)}%"></div></div>
+      <div class="isler">${s.isler.length ? s.isler.join(" → ") : "iş atanmadı"}</div>`;
+    d.title = `Operatör ${i + 1}: ${s.yuk.toFixed(1)} sn çalışma, %${(100 * s.yuk / h.cevrim).toFixed(0)} doluluk`;
+    kutuI.appendChild(d);
+  });
+  const kayip = 100 * (vv.operator * h.cevrim / h.toplam - 1);
+  oz.innerHTML = `Toplam iş içeriği <b>${h.toplam.toFixed(1)} sn</b> · en yüklü operatör (hesaplanan çevrim) ` +
+    `<b>${h.cevrim.toFixed(1)} sn</b> · denge kaybı <b>%${kayip.toFixed(1)}</b>`;
+}
 
 const kutu = document.getElementById("girdiler");
 const deger = {};
@@ -665,6 +754,7 @@ function hesapla() {
   sEl.dataset.ham = s;
   sEl.textContent = Number.isFinite(s) ? s.toFixed(1) : "–";
   aEl.textContent = Number.isFinite(s) && s > 0 ? (3600 / s).toFixed(1) : "–";
+  ciz(deger);
 }
 
 document.getElementById("denklem").textContent = "çevrim_sn = " + MODEL.sabit.toFixed(3) + " " +
@@ -703,7 +793,8 @@ const ornekler = JSON.parse(require('fs').readFileSync(ornekYolu, 'utf8'));
     }
     const ham = await p.$eval('#sure', e => Number(e.dataset.ham));
     const fn = await p.evaluate(v => window.tahmin(v), o);
-    sonuc.push({ arayuz: ham, fonksiyon: fn });
+    const yukler = await p.$$eval('#istasyonlar .ist', l => l.map(e => Number(e.dataset.yuk)));
+    sonuc.push({ arayuz: ham, fonksiyon: fn, yukler });
   }
   const tasma = await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   console.log(JSON.stringify({ sonuc, tasma }));
@@ -727,6 +818,12 @@ def dogrula(model):
                 o[g["ad"]] = round(float(rng.uniform(g["min"], g["max"])), 2)
         ornekler.append(o)
     py = [python_tahmin(model, o) for o in ornekler]
+    py_yuk = []
+    for o in ornekler:
+        d = {k: v[4] for k, v in GIRDILER.items()}
+        d.update(o)
+        _, y = hat_dengele([s for _, s in is_bloklari(d)], d["operator"])
+        py_yuk.append([float(x) for x in y] + [0.0] * (d["operator"] - len(y)))
     print("\n5) Python ↔ HTML karşılaştırması")
     if shutil.which("node") is None:
         print("   node bulunamadı; HTML doğrulaması atlandı.")
@@ -741,8 +838,12 @@ def dogrula(model):
         return None
     cikti = json.loads(r.stdout)
     hepsi = True
-    for o, p_, h in zip(ornekler, py, cikti["sonuc"]):
+    for o, p_, h, yk in zip(ornekler, py, cikti["sonuc"], py_yuk):
         esit = abs(p_ - h["arayuz"]) < 1e-9 and abs(p_ - h["fonksiyon"]) < 1e-9
+        yuk_esit = len(yk) == len(h["yukler"]) and all(abs(a - b) < 1e-9 for a, b in zip(yk, h["yukler"]))
+        esit &= yuk_esit
+        print(f"   operatör yükleri Python {[round(x, 1) for x in yk]} | HTML "
+              f"{[round(x, 1) for x in h['yukler']]}  {'EŞLEŞTİ' if yuk_esit else 'FARKLI!'}")
         hepsi &= esit
         print(f"   {o} → Python {p_:.6f} | HTML {h['arayuz']:.6f}  {'EŞLEŞTİ' if esit else 'FARKLI!'}")
     print(f"   Telefon genişliğinde (390 px) yatay taşma: {'VAR' if cikti['tasma'] else 'yok'}")

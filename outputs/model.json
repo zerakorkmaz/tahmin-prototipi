@@ -158,5 +158,33 @@
   ],
   "r2": 0.9951013583375329,
   "duzeltilmis_r2": 0.9948874438544557,
-  "n_gozlem": 240
+  "n_gozlem": 240,
+  "hat": {
+    "aciklama": "Operatör iş dağılımı: regresyon değil; literatür/VARSAYIM element süreleri, öncelik sırası ve bağlı iş kısıtıyla optimum dengeleme.",
+    "element_sn": {
+      "sabit_is": 15,
+      "tasima_per_l": 2.0,
+      "kaynak_sabit": 20,
+      "kaynak_per_m": 10,
+      "pompa": 8.5,
+      "sensor": 6.0,
+      "vida": 9.8,
+      "klips": 3.5,
+      "hortum": 10.0,
+      "sizdirmazlik": 25,
+      "vida_per_braket": 2,
+      "gurultu_sd": 3.0
+    },
+    "vida_per_braket": 2,
+    "varsayilan": {
+      "hacim_l": 3.5,
+      "kaynak_m": 1.0,
+      "vida": 2,
+      "klips": 4,
+      "hortum": 2,
+      "pompa": 1,
+      "sensor": 1,
+      "operator": 2
+    }
+  }
 }
